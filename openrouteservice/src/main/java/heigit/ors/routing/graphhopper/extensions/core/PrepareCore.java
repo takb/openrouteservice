@@ -19,11 +19,16 @@ package heigit.ors.routing.graphhopper.extensions.core;
 
 import com.graphhopper.coll.GHTreeMapComposed;
 import com.graphhopper.routing.*;
+import com.graphhopper.routing.ch.Path4CH;
 import com.graphhopper.routing.ch.PreparationWeighting;
+import com.graphhopper.routing.ch.PrepareEncoder;
 import com.graphhopper.routing.util.*;
+//import com.graphhopper.routing.weighting.AbstractWeighting;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.*;
 import com.graphhopper.util.*;
+//import heigit.ors.routing.graphhopper.extensions.edgefilters.EdgeFilterSequence;
+//import heigit.ors.routing.graphhopper.extensions.core.CoreNodeContractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +48,7 @@ public class PrepareCore extends AbstractAlgoPreparation implements RoutingAlgor
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final PreparationWeighting prepareWeighting;
     private final TraversalMode traversalMode;
+    private final CoreDijkstraFilter levelFilter;
     private final EdgeFilter restrictionFilter;
     private final GraphHopperStorage ghStorage;
     private final CHGraphImpl prepareGraph;
@@ -89,6 +95,7 @@ public class PrepareCore extends AbstractAlgoPreparation implements RoutingAlgor
         this.ghStorage = ghStorage;
         this.prepareGraph = (CHGraphImpl) chGraph;
         this.traversalMode = traversalMode;
+        levelFilter = new CoreDijkstraFilter(prepareGraph);
         this.restrictionFilter = restrictionFilter;
         this.weighting = weighting;
         prepareWeighting = new PreparationWeighting(weighting);
@@ -98,7 +105,7 @@ public class PrepareCore extends AbstractAlgoPreparation implements RoutingAlgor
     }
 
     public void initLevelFilter() {
-        new CoreDijkstraFilter(this.prepareGraph);
+        levelFilter.init(this.prepareGraph);
     }
     /**
      * The higher the values are the longer the preparation takes but the less shortcuts are
@@ -564,7 +571,6 @@ public class PrepareCore extends AbstractAlgoPreparation implements RoutingAlgor
         algo.setMaxVisitedNodes(opts.getMaxVisitedNodes());
 
         // append any restriction filters after node level filter
-        CoreDijkstraFilter levelFilter = new CoreDijkstraFilter(prepareGraph);
         EdgeFilter ef = opts.getEdgeFilter();
         if (ef != null)
             levelFilter.addRestrictionFilter(ef);
