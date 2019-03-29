@@ -35,6 +35,7 @@ import com.graphhopper.routing.template.ViaRoutingTemplate;
 import com.graphhopper.routing.util.*;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.CHGraph;
+import com.graphhopper.storage.CHGraphImpl;
 import com.graphhopper.storage.GraphHopperStorage;
 import com.graphhopper.storage.index.QueryResult;
 import com.graphhopper.util.*;
@@ -544,8 +545,7 @@ public class ORSGraphHopper extends GraphHopper {
 			coreFactoryDecorator.createPreparations(gs, traversalMode, coreEdgeFilter);
 		if (!isCorePrepared())
 			prepareCore();
-
-
+		
 		coreFactoryDecorator.initEdgeFilter();
 
 		//Create the landmarks in the core

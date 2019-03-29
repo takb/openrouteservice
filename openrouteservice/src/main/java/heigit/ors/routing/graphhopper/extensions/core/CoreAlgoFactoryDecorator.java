@@ -334,6 +334,10 @@ public class CoreAlgoFactoryDecorator implements RoutingAlgorithmFactoryDecorato
                     setNeighborUpdates(preparationNeighborUpdates).
                     setLogMessages(preparationLogMessages);
 
+            CHGraphImpl g = ghStorage.getCoreGraph(weighting);
+
+            System.out.println("core " + weighting + " nodes: " + g.getNodes() + " core: " + g.getCoreNodes() + " base_edges: " + g.getBaseGraph().getAllEdges().getMaxId() + " total_edges: " + g.getAllEdges().getMaxId());
+
             addPreparation(tmpPrepareCore);
         }
     }
