@@ -40,6 +40,7 @@ import javax.xml.validation.Validator;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static io.restassured.RestAssured.given;
@@ -1113,7 +1114,7 @@ public class ResultTest extends ServiceTest {
         body.put("coordinates", constructCoords("8.688694,49.399374|8.686495,49.40349"));
         body.put("preference", "fastest");
         body.put("geometry", true);
-        body.put("bearings", constructBearings("25,30|90,20"));
+        body.put("bearings", new JSONArray(Arrays.asList(25, 90)));// constructBearings("25|90"));
 
         given()
                 .header("Accept", "application/json")
@@ -1135,7 +1136,7 @@ public class ResultTest extends ServiceTest {
         body.put("coordinates", constructCoords("8.688694,49.399374|8.686495,49.40349"));
         body.put("preference", "fastest");
         body.put("geometry", true);
-        body.put("bearings", constructBearings("25,30"));
+        body.put("bearings", new JSONArray(Arrays.asList(25)));//constructBearings("25,30"));
 
         given()
                 .header("Accept", "application/json")
@@ -1157,7 +1158,7 @@ public class ResultTest extends ServiceTest {
         body.put("coordinates", constructCoords("8.688694,49.399374|8.686495,49.40349"));
         body.put("preference", "fastest");
         body.put("geometry", true);
-        body.put("bearings", constructBearings("|90,20"));
+        body.put("bearings", new JSONArray(Arrays.asList(null, 90)));//constructBearings("|90,20"));
 
         given()
                 .header("Accept", "application/json")
@@ -2421,9 +2422,9 @@ public class ResultTest extends ServiceTest {
         return coordinates;
     }
 
-    private JSONArray constructBearings(String coordString) {
-        JSONArray coordinates = new JSONArray();
-        String[] coordPairs = coordString.split("\\|");
+    /*private JSONArray constructBearings(String bearingsString) {
+        JSONArray bearings = new JSONArray();
+        String[] coordPairs = bearingsString.split("\\|");
         for(String pair : coordPairs) {
             JSONArray coord = new JSONArray();
             if(pair != null && !pair.isEmpty()) {
@@ -2435,7 +2436,7 @@ public class ResultTest extends ServiceTest {
         }
 
         return coordinates;
-    }
+    }*/
 
 
     private JSONArray constructExtras(String extrasString) {

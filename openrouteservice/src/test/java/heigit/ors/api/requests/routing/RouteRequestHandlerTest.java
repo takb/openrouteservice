@@ -104,7 +104,7 @@ public class RouteRequestHandlerTest {
 
         request.setProfile(APIEnums.Profile.DRIVING_CAR);
         request.setAttributes(new APIEnums.Attributes[] { APIEnums.Attributes.AVERAGE_SPEED, APIEnums.Attributes.DETOUR_FACTOR});
-        request.setBearings(new Double[][] {{10.0,10.0},{260.0, 90.0},{45.0, 30.0}});
+        request.setBearings(new Double[] {10.0,260.0,45.0});
         request.setContinueStraightAtWaypoints(true);
         request.setExtraInfo(new APIEnums.ExtraInfo[] { APIEnums.ExtraInfo.OSM_ID});
         request.setIncludeGeometry(true);
@@ -168,13 +168,10 @@ public class RouteRequestHandlerTest {
         Assert.assertEquals(RoutingProfileType.getFromString("driving-car"), routingRequest.getSearchParameters().getProfileType());
         Assert.assertArrayEquals(new String[] {"avgspeed", "detourfactor"}, routingRequest.getAttributes());
 
-        WayPointBearing[] bearings = routingRequest.getSearchParameters().getBearings();
-        Assert.assertEquals(bearings[0].getValue(), 10.0, 0);
-        Assert.assertEquals(bearings[0].getDeviation(), 10.0, 0);
-        Assert.assertEquals(bearings[1].getValue(), 260.0, 0);
-        Assert.assertEquals(bearings[1].getDeviation(), 90.0, 0);
-        Assert.assertEquals(bearings[2].getValue(), 45.0, 0);
-        Assert.assertEquals(bearings[2].getDeviation(), 30.0, 0);
+        double[] bearings = routingRequest.getSearchParameters().getBearings();
+        Assert.assertEquals(bearings[0], 10.0, 0);
+        Assert.assertEquals(bearings[1], 260.0, 0);
+        Assert.assertEquals(bearings[2], 45.0, 0);
 
         Assert.assertTrue(routingRequest.getContinueStraight());
 
@@ -256,7 +253,7 @@ public class RouteRequestHandlerTest {
 
     @Test
     public void skippedBearingTest() throws Exception {
-        request.setBearings(new Double[][] {{120.0, 90.0}, { , }, {90.0, 30.0}});
+        request.setBearings(new Double[] {120.0, Double.NaN, 90.0});
         RoutingRequest routingRequest;
 
         routingRequest = new RouteRequestHandler().convertRouteRequest(request);
@@ -266,7 +263,7 @@ public class RouteRequestHandlerTest {
 
     @Test(expected = ParameterValueException.class)
     public void invalidBearingLength() throws Exception {
-        request.setBearings(new Double[][] {{123.0,123.0}});
+        request.setBearings(new Double[] {123.0});
         new RouteRequestHandler().convertRouteRequest(request);
     }
 

@@ -160,17 +160,15 @@ public class RouteRequest {
     @JsonIgnore
     private boolean hasMaximumSearchRadii = false;
 
-    @ApiModelProperty(name = PARAM_BEARINGS, value = "Specifies a list of pairs (bearings and deviations) to filter the segments of the road network a waypoint can snap to. " +
-            "For example `bearings=[[45,10],[120,20]]`. \n" +
-            "Each pair is a comma-separated list that can consist of one or two float values, where the first value is the bearing and the second one is the allowed deviation from the bearing. " +
-            "The bearing can take values between `0` and `360` clockwise from true north. If the deviation is not set, then the default value of `100` degrees is used. " +
-            "The number of pairs must correspond to the number of waypoints.\n" +
+    @ApiModelProperty(name = PARAM_BEARINGS, value = "Specifies a list of bearings to filter the segments of the road network a waypoint can snap to. " +
+            "For example `bearings=[45,120]`. \n" +
+            "The bearing can take values between `0` and `360` clockwise from true north." +
             "The number of bearings corresponds to the length of waypoints-1 or waypoints. If the bearing information for the last waypoint is given, then this will control the sector from which the destination waypoint may be reached. " +
-            "You can skip a bearing for a certain waypoint by passing an empty value for an array, e.g. `[30,20],[],[40,20]`. CUSTOM_KEYS:{'validWhen':{'ref':'profile','value':'cycling-*'}}",
-            example = "[[30, 20], [], [40, 20]]"
+            "You can skip a bearing for a certain waypoint by passing an empty value for an array, e.g. `[30,,40]`. CUSTOM_KEYS:{'validWhen':{'ref':'profile','value':'cycling-*'}}",
+            example = "[30, 40]"
     )
     @JsonProperty(PARAM_BEARINGS)
-    private Double[][] bearings;
+    private Double[] bearings;
     @JsonIgnore
     private boolean hasBearings = false;
 
@@ -425,11 +423,11 @@ public class RouteRequest {
         hasMaximumSearchRadii = true;
     }
 
-    public Double[][] getBearings() {
+    public Double[] getBearings() {
         return bearings;
     }
 
-    public void setBearings(Double[][] bearings) {
+    public void setBearings(Double[] bearings) {
         this.bearings = bearings;
         hasBearings = true;
     }

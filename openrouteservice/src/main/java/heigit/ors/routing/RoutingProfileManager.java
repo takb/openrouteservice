@@ -350,7 +350,7 @@ public class RoutingProfileManager {
         RouteProcessContext routeProcCntx = new RouteProcessContext(pathProcessor);
         EdgeFilter customEdgeFilter = rp.createAccessRestrictionFilter(coords);
         GHResponse prevResp = null;
-        WayPointBearing[] bearings = (req.getContinueStraight() || searchParams.getBearings() != null) ? new WayPointBearing[2] : null;
+        double[] bearings = (req.getContinueStraight() || searchParams.getBearings() != null) ? new double[2] : null;
         int profileType = req.getSearchParameters().getProfileType();
         double[] radiuses;
         if (searchParams.getMaximumRadiuses() != null) {
@@ -368,14 +368,14 @@ public class RoutingProfileManager {
                 pathProcessor.setSegmentIndex(i - 1, nSegments);
 
             if (bearings != null) {
-                bearings[0] = null;
+                bearings[0] = Double.NaN;
                 if (i > 1 && req.getContinueStraight()) {
-                    bearings[0] = new WayPointBearing(getHeadingDirection(prevResp), Double.NaN);
+                    bearings[0] = getHeadingDirection(prevResp);
                 }
 
                 if (searchParams.getBearings() != null) {
                     bearings[0] = searchParams.getBearings()[i - 1];
-                    bearings[1] = (i == nSegments && searchParams.getBearings().length != nSegments + 1) ? new WayPointBearing(Double.NaN, Double.NaN) : searchParams.getBearings()[i];
+                    bearings[1] = (i == nSegments && searchParams.getBearings().length != nSegments + 1) ? Double.NaN : searchParams.getBearings()[i];
                 }
             }
 

@@ -77,7 +77,7 @@ public class RouteRequestTest {
 
     @Test
     public void testHasBearings() {
-        request.setBearings(new Double[][] {new Double[] {0.0, 90.0}});
+        request.setBearings(new Double[] {0.0});
         Assert.assertTrue(request.hasBearings());
     }
 

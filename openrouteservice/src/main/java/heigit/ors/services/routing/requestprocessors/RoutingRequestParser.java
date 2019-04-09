@@ -82,12 +82,12 @@ public class RoutingRequestParser
 		value = request.getParameter("bearings");
 		if (!Helper.isEmpty(value))
 		{
-			WayPointBearing[] bearings = null;
+			double[] bearings = null;
 
 			try
 			{
 				String[] array = value.split("\\|");
-				bearings = new WayPointBearing[array.length];
+				bearings = new double[array.length];
 				
 				for (int i = 0; i < array.length; i++)
 				{
@@ -95,16 +95,13 @@ public class RoutingRequestParser
 					if (value.contains(","))
 					{
 						String[] bd = value.split("\\,");
-						if (bd.length >= 2)
-							bearings[i] = new WayPointBearing(Double.parseDouble(bd[0]), Double.parseDouble(bd[1]));
-						else
-							bearings[i] = new WayPointBearing(Double.parseDouble(bd[0]), Double.NaN);
+						bearings[i] = Double.parseDouble(bd[0]);
 					}
 					else {
 						if (Helper.isEmpty(value))
-							bearings[i] = new WayPointBearing(Double.NaN, Double.NaN);
+							bearings[i] = Double.NaN;
 						else 
-							bearings[i] = new WayPointBearing(Double.parseDouble(value), 0.0);
+							bearings[i] = Double.parseDouble(value);
 						
 					}
 						

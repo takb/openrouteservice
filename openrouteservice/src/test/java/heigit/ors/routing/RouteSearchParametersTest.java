@@ -226,8 +226,8 @@ public class RouteSearchParametersTest {
     @Test
     public void setBearings() {
         RouteSearchParameters routeSearchParameters = new RouteSearchParameters();
-        routeSearchParameters.setBearings(new WayPointBearing[]{});
-        Assert.assertArrayEquals(new WayPointBearing[]{}, routeSearchParameters.getBearings());
+        routeSearchParameters.setBearings(new double[]{});
+        Assert.assertEquals(0, routeSearchParameters.getBearings().length);
     }
 
     @Test

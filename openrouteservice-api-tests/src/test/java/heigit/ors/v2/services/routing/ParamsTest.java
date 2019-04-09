@@ -751,18 +751,9 @@ public class ParamsTest extends ServiceTest {
 		body.put("preference", getParameter("preference"));
 
 		JSONArray bearings = new JSONArray();
-		JSONArray bearing1 = new JSONArray();
-		bearing1.put(50);
-		bearing1.put(50);
-		bearings.put(bearing1);
-		JSONArray bearing2 = new JSONArray();
-		bearing2.put(50);
-		bearing2.put(50);
-		bearings.put(bearing2);
-		JSONArray bearing3 = new JSONArray();
-		bearing3.put(50);
-		bearing3.put(50);
-		bearings.put(bearing3);
+		bearings.put(50);
+		bearings.put(50);
+		bearings.put(50);
 
 		body.put("bearings", bearings);
 
@@ -783,14 +774,8 @@ public class ParamsTest extends ServiceTest {
 		body.put("preference", getParameter("preference"));
 
 		bearings = new JSONArray();
-		bearing1 = new JSONArray();
-		bearing1.put("50k");
-		bearing1.put(50);
-		bearings.put(bearing1);
-		bearing2 = new JSONArray();
-		bearing2.put(50);
-		bearing2.put(50);
-		bearings.put(bearing2);
+		bearings.put("50k");
+		bearings.put(50);
 
 		body.put("bearings", bearings);
 

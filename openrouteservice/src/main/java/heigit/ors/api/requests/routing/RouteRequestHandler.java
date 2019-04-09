@@ -306,23 +306,19 @@ public class RouteRequestHandler extends GenericHandler {
         return avoidAreas;
     }
 
-    private  WayPointBearing[] convertBearings(Double[][] bearingsIn, int coordinatesLength) throws ParameterValueException {
+    private  double[] convertBearings(Double[] bearingsIn, int coordinatesLength) throws ParameterValueException {
         if(bearingsIn == null || bearingsIn.length == 0)
-            return new WayPointBearing[0];
+            return new double[0];
 
         if(bearingsIn.length != coordinatesLength && bearingsIn.length != coordinatesLength-1)
             throw new ParameterValueException(RoutingErrorCodes.INVALID_PARAMETER_VALUE, RouteRequest.PARAM_BEARINGS, Arrays.toString(bearingsIn), "The number of bearings must be equal to the number of waypoints on the route.");
 
-        WayPointBearing[] bearings = new WayPointBearing[coordinatesLength];
+        double[] bearings = new double[coordinatesLength];
         for(int i=0; i<bearingsIn.length; i++) {
-            Double[] singleBearingIn = bearingsIn[i];
-
-            if(singleBearingIn.length == 0) {
-                bearings[i] = new WayPointBearing(Double.NaN, Double.NaN);
-            } else if(singleBearingIn.length == 1) {
-                bearings[i] = new WayPointBearing(singleBearingIn[0], Double.NaN);
+            if (bearingsIn[i] == null || Double.isNaN(bearingsIn[i])) {
+                bearings[i] = Double.NaN;
             } else {
-                bearings[i] = new WayPointBearing(singleBearingIn[0], singleBearingIn[1]);
+                bearings[i] = bearingsIn[i];
             }
         }
 
