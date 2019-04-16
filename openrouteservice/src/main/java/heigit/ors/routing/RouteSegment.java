@@ -20,6 +20,7 @@ import com.graphhopper.PathWrapper;
 import com.graphhopper.util.shapes.BBox;
 
 import heigit.ors.common.DistanceUnit;
+import heigit.ors.exceptions.StatusCodeException;
 import heigit.ors.util.DistanceUnitUtil;
 import heigit.ors.util.FormatUtility;
 
@@ -32,7 +33,7 @@ public class RouteSegment {
 	private double _detourFactor = 0.0;
 	private List<RouteStep> _steps;
 
-	public RouteSegment(PathWrapper path, DistanceUnit units) throws Exception
+	public RouteSegment(PathWrapper path, DistanceUnit units) throws StatusCodeException
 	{
 		_distance = FormatUtility.roundToDecimalsForUnits(DistanceUnitUtil.convert(path.getDistance(), DistanceUnit.Meters, units), units);
 		_duration = FormatUtility.roundToDecimals(path.getTime()/1000.0, 1);

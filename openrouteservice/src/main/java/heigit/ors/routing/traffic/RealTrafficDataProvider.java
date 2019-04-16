@@ -187,7 +187,7 @@ public class RealTrafficDataProvider {
 		m_routeProfilesMap = new HashMap<Integer, RealTrafficDataProvider.RouteProfileTmcData>();
 	}
 
-	public void initialize(RoutingManagerConfiguration rmc, RoutingProfilesCollection profiles) throws Exception {
+	public void initialize(RoutingManagerConfiguration rmc, RoutingProfilesCollection profiles) {
 		m_config = rmc.TrafficInfoConfig;
 
 		// Proceeed only when we have a car profile.
@@ -227,7 +227,7 @@ public class RealTrafficDataProvider {
 					}
 				}
 				
-				loadCntx.releaseElevationProviderCacheAfterAllVehicleProfilesHaveBeenProcessed();
+				loadCntx.releaseElevationProviderCache();
 
 				for (RoutingProfile rp : profiles.getCarProfiles()) {
 					if (rp.useTrafficInformation()) {

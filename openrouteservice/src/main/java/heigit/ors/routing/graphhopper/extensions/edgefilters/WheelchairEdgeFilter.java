@@ -13,6 +13,7 @@
  */
 package heigit.ors.routing.graphhopper.extensions.edgefilters;
 
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.routing.graphhopper.extensions.WheelchairAttributes;
 import heigit.ors.routing.graphhopper.extensions.storages.GraphStorageUtils;
 import heigit.ors.routing.graphhopper.extensions.storages.WheelchairAttributesGraphStorage;
@@ -29,12 +30,12 @@ public class WheelchairEdgeFilter implements EdgeFilter
 	private WheelchairAttributes _attributes;
 	private WheelchairParameters _params;
 	
-	public WheelchairEdgeFilter(WheelchairParameters params, GraphStorage graphStorage) throws Exception {
+	public WheelchairEdgeFilter(WheelchairParameters params, GraphStorage graphStorage) throws InternalServerException {
 
 		_storage = GraphStorageUtils.getGraphExtension(graphStorage, WheelchairAttributesGraphStorage.class);
 
 		if (_storage ==  null)
-			throw new Exception("ExtendedGraphStorage for wheelchair attributes was not found.");
+			throw new InternalServerException("ExtendedGraphStorage for wheelchair attributes was not found.");
 		
 		_params = params;
 		_attributes = new WheelchairAttributes();

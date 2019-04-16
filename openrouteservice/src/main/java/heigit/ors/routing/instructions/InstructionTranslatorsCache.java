@@ -16,6 +16,7 @@ package heigit.ors.routing.instructions;
 import java.util.HashMap;
 import java.util.Map;
 
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.localization.LocalizationManager;
 
 public class InstructionTranslatorsCache 
@@ -41,7 +42,7 @@ public class InstructionTranslatorsCache
 		return m_instance;
 	}
 
-	public InstructionTranslator getTranslator(String langCode) throws Exception
+	public InstructionTranslator getTranslator(String langCode) throws InternalServerException
 	{
 		int hashCode = langCode.hashCode();
 

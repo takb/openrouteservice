@@ -24,6 +24,7 @@ import com.graphhopper.util.Helper;
 import com.typesafe.config.ConfigFactory;
 import com.vividsolutions.jts.geom.Envelope;
 
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.services.routing.RoutingServiceSettings;
 import heigit.ors.util.FileUtility;
 import heigit.ors.util.StringUtility;
@@ -34,7 +35,7 @@ public class RoutingManagerConfiguration
 	public TrafficInformationConfiguration TrafficInfoConfig;
 	public RouteProfileConfiguration[] Profiles;
 
-	public static RoutingManagerConfiguration loadFromFile(String path) throws IOException, Exception
+	public static RoutingManagerConfiguration loadFromFile(String path) throws InternalServerException
 	{
 		RoutingManagerConfiguration gc = new RoutingManagerConfiguration();
 
@@ -182,7 +183,7 @@ public class RoutingManagerConfiguration
 						List<Double> bbox = (List<Double>)paramItem.getValue();
 
 						if (bbox.size() != 4)
-							throw new Exception("'extent' element must contain 4 elements.");
+							throw new InternalServerException("'extent' element must contain 4 elements.");
 						profile.setExtent(new Envelope(bbox.get(0),bbox.get(1),bbox.get(2),bbox.get(3)));
 						break;
 					case "maximum_snapping_radius":

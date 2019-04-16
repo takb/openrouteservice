@@ -21,6 +21,7 @@ import heigit.ors.common.ArrivalDirection;
 import heigit.ors.common.CardinalDirection;
 import heigit.ors.common.DistanceUnit;
 import heigit.ors.exceptions.InternalServerException;
+import heigit.ors.exceptions.StatusCodeException;
 import heigit.ors.routing.instructions.InstructionTranslator;
 import heigit.ors.routing.instructions.InstructionTranslatorsCache;
 import heigit.ors.routing.instructions.InstructionType;
@@ -42,7 +43,7 @@ class RouteResultBuilder
 		distCalc = new DistanceCalcEarth();
 	}
 
-    RouteResult createMergedRouteResultFromBestPaths(List<GHResponse> responses, RoutingRequest request, List<RouteExtraInfo> extras) throws Exception {
+    RouteResult createMergedRouteResultFromBestPaths(List<GHResponse> responses, RoutingRequest request, List<RouteExtraInfo> extras) throws StatusCodeException {
         RouteResult result = new RouteResult(request.getExtraInfo());
         result.addExtras(request, extras);
 
@@ -97,7 +98,7 @@ class RouteResultBuilder
 
     }
 
-    private RouteSegment createRouteSegment(PathWrapper path, RoutingRequest request, PointList nextRouteFirstStepPoints) throws Exception {
+    private RouteSegment createRouteSegment(PathWrapper path, RoutingRequest request, PointList nextRouteFirstStepPoints) throws StatusCodeException {
         RouteSegment seg = new RouteSegment(path, request.getUnits());
 
         if (request.getIncludeGeometry() && request.getIncludeInstructions()) {

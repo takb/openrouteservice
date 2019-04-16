@@ -14,16 +14,11 @@
 package heigit.ors.routing;
 
 import com.graphhopper.GHResponse;
-import com.graphhopper.routing.util.EdgeFilter;
 import com.graphhopper.routing.util.PathProcessor;
-import com.graphhopper.util.DistanceCalc;
 import com.graphhopper.util.Helper;
 import com.graphhopper.util.PointList;
 import com.vividsolutions.jts.geom.Coordinate;
-import heigit.ors.exceptions.InternalServerException;
-import heigit.ors.exceptions.PointNotFoundException;
-import heigit.ors.exceptions.RouteNotFoundException;
-import heigit.ors.exceptions.ServerLimitExceededException;
+import heigit.ors.exceptions.*;
 import heigit.ors.isochrones.IsochroneMap;
 import heigit.ors.isochrones.IsochroneSearchParameters;
 import heigit.ors.mapmatching.MapMatchingRequest;
@@ -32,17 +27,15 @@ import heigit.ors.matrix.MatrixRequest;
 import heigit.ors.matrix.MatrixResult;
 import heigit.ors.routing.configuration.RouteProfileConfiguration;
 import heigit.ors.routing.configuration.RoutingManagerConfiguration;
-import heigit.ors.routing.pathprocessors.ElevationSmoothPathProcessor;
 import heigit.ors.routing.pathprocessors.ExtraInfoProcessor;
 import heigit.ors.routing.traffic.RealTrafficDataProvider;
 import heigit.ors.services.routing.RoutingServiceSettings;
 import heigit.ors.util.FormatUtility;
+import heigit.ors.util.GeomUtility;
 import heigit.ors.util.RuntimeUtility;
-import heigit.ors.util.StringUtility;
 import heigit.ors.util.TimeUtility;
 import org.apache.log4j.Logger;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -51,11 +44,11 @@ import java.util.concurrent.*;
 public class RoutingProfileManager {
     private static final Logger LOGGER = Logger.getLogger(RoutingProfileManager.class.getName());
 
-    private RoutingProfilesCollection _routeProfiles;
-    private RoutingProfilesUpdater _profileUpdater;
+    private RoutingProfilesCollection routeProfileCollection;
+    private RoutingProfilesUpdater profileUpdater;
     private static RoutingProfileManager mInstance;
 
-    public static synchronized RoutingProfileManager getInstance() throws IOException {
+    public static synchronized RoutingProfileManager getInstance() {
         if (mInstance == null) {
             mInstance = new RoutingProfileManager();
             mInstance.initialize(null);
@@ -64,45 +57,23 @@ public class RoutingProfileManager {
         return mInstance;
     }
 
-    public RoutingProfileManager() {
-    }
-
-    public void prepareGraphs(String graphProps) {
+    /**
+     * Run the processes that prepare graphs
+     *
+     * @param propertiesFilePath    The path to the file that contains the properties that should be used for graph preparation
+     */
+    public void prepareGraphs(String propertiesFilePath) {
         long startTime = System.currentTimeMillis();
 
         try {
-			/* 
-			RoutingManagerConfiguration rmc = RoutingManagerConfiguration.loadFromFile(graphProps);
-			RoutingProfilesCollection coll = new RoutingProfilesCollection();
-			RoutingProfileLoadContext loadCntx = new RoutingProfileLoadContext();
-			int nRouteInstances = rmc.Profiles.length;
+            RoutingManagerConfiguration rmc = RoutingManagerConfiguration.loadFromFile(propertiesFilePath);
 
-			for (int i = 0; i < nRouteInstances; i++) {
-				RouteProfileConfiguration rpc = rmc.Profiles[i];
-				if (!rpc.getEnabled())
-					continue;
-
-				LOGGER.info("Preparing route profile in "  + rpc.getGraphPath() + " ...");
-
-				RoutingProfile rp = new RoutingProfile(RoutingServiceSettings.getSourceFile(), rpc, coll, loadCntx);
-
-				rp.close();
-
-				LOGGER.info("Done.");
-			}
-
-			loadCntx.release();
-
-			*/
-
-            RoutingManagerConfiguration rmc = RoutingManagerConfiguration.loadFromFile(graphProps);
-
-            _routeProfiles = new RoutingProfilesCollection();
+            routeProfileCollection = new RoutingProfilesCollection();
             int nRouteInstances = rmc.Profiles.length;
 
             RoutingProfileLoadContext loadCntx = new RoutingProfileLoadContext(RoutingServiceSettings.getInitializationThreads());
             ExecutorService executor = Executors.newFixedThreadPool(RoutingServiceSettings.getInitializationThreads());
-            ExecutorCompletionService<RoutingProfile> compService = new ExecutorCompletionService<RoutingProfile>(executor);
+            ExecutorCompletionService<RoutingProfile> compService = new ExecutorCompletionService<>(executor);
 
             int nTotalTasks = 0;
 
@@ -111,11 +82,11 @@ public class RoutingProfileManager {
                 if (!rpc.getEnabled())
                     continue;
 
-                Integer[] routeProfiles = rpc.getProfilesTypes();
+                Integer[] routeProfileTypes = rpc.getProfilesTypes();
 
-                if (routeProfiles != null) {
+                if (routeProfileTypes != null) {
                     Callable<RoutingProfile> task = new RoutingProfileLoader(RoutingServiceSettings.getSourceFile(), rpc,
-                            _routeProfiles, loadCntx);
+                            routeProfileCollection, loadCntx);
                     compService.submit(task);
                     nTotalTasks++;
                 }
@@ -134,18 +105,17 @@ public class RoutingProfileManager {
                     LOGGER.info("Graph preparation done.");
                 } catch (InterruptedException e) {
                     LOGGER.error(e);
-                    e.printStackTrace();
+                    Thread.currentThread().interrupt();
                 } catch (ExecutionException e) {
                     LOGGER.error(e);
-                    e.printStackTrace();
                 }
             }
 
             executor.shutdown();
-            loadCntx.releaseElevationProviderCacheAfterAllVehicleProfilesHaveBeenProcessed();
+            loadCntx.releaseElevationProviderCache();
 
 
-            LOGGER.info("Graphs were prepaired in " + TimeUtility.getElapsedTime(startTime, true) + ".");
+            LOGGER.info("Graphs were prepared in " + TimeUtility.getElapsedTime(startTime, true) + ".");
         } catch (Exception ex) {
             LOGGER.error("Failed to prepare graphs.", ex);
         }
@@ -153,294 +123,259 @@ public class RoutingProfileManager {
         RuntimeUtility.clearMemory(LOGGER);
     }
 
-    public void initialize(String graphProps) {
+    /**
+     * Run processes that build or load graphs into memory.
+     *
+     * @param managerConfiguration  The configuration that should be used for generating the graphs
+     */
+    private void loadGraphs(RoutingManagerConfiguration managerConfiguration) {
+        long startTime = System.currentTimeMillis();
+
+        routeProfileCollection = new RoutingProfilesCollection();
+        int nRouteInstances = managerConfiguration.Profiles.length;
+
+        RoutingProfileLoadContext loadCntx = new RoutingProfileLoadContext(RoutingServiceSettings.getInitializationThreads());
+        ExecutorService executor = Executors.newFixedThreadPool(RoutingServiceSettings.getInitializationThreads());
+        ExecutorCompletionService<RoutingProfile> compService = new ExecutorCompletionService<>(executor);
+
+        int nTotalTasks = 0;
+
+        for (int i = 0; i < nRouteInstances; i++) {
+            RouteProfileConfiguration rpc = managerConfiguration.Profiles[i];
+            if (!rpc.getEnabled())
+                continue;
+
+            Integer[] routeProfiles = rpc.getProfilesTypes();
+
+            if (routeProfiles != null) {
+                Callable<RoutingProfile> task = new RoutingProfileLoader(RoutingServiceSettings.getSourceFile(), rpc,
+                        routeProfileCollection, loadCntx);
+                compService.submit(task);
+                nTotalTasks++;
+            }
+        }
+
+        LOGGER.info("               ");
+
+        int nCompletedTasks = 0;
+        while (nCompletedTasks < nTotalTasks) {
+            try {
+                Future<RoutingProfile> future = compService.take();
+                RoutingProfile rp = future.get();
+                nCompletedTasks++;
+                if (!routeProfileCollection.add(rp))
+                    LOGGER.warn("Routing profile has already been added.");
+            } catch (InterruptedException e) {
+                LOGGER.error(e);
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException e) {
+                LOGGER.error(e);
+            }
+        }
+
+        executor.shutdown();
+        loadCntx.releaseElevationProviderCache();
+
+        LOGGER.info("Total time: " + TimeUtility.getElapsedTime(startTime, true) + ".");
+        LOGGER.info("========================================================================");
+    }
+
+    /**
+     * Initialise all of the routing profiles for the service.
+     *
+     * @param propertiesFilePath    The path of the file that should be read for obtaining the properties
+     */
+    public void initialize(String propertiesFilePath) {
         RuntimeUtility.printRAMInfo("", LOGGER);
 
         LOGGER.info("      ");
 
-        long startTime = System.currentTimeMillis();
+        if (RoutingServiceSettings.getEnabled()) {
+            RoutingManagerConfiguration rmc = null;
+            try {
+                rmc = RoutingManagerConfiguration.loadFromFile(propertiesFilePath);
+            } catch (InternalServerException e) {
+                LOGGER.error("Could not load configuration.", e);
+            }
 
-        try {
-            if (RoutingServiceSettings.getEnabled()) {
-                RoutingManagerConfiguration rmc = RoutingManagerConfiguration.loadFromFile(graphProps);
-
+            if(rmc != null) {
                 LOGGER.info(String.format("====> Initializing profiles from '%s' (%d threads) ...", RoutingServiceSettings.getSourceFile(), RoutingServiceSettings.getInitializationThreads()));
                 LOGGER.info("                              ");
 
-                // MARQ24 MOD START
-                // RAMDataAccess.LZ4_COMPRESSION_ENABLED = "LZ4".equalsIgnoreCase(RoutingServiceSettings.getStorageFormat());
-                // the ExGHOverwrite-FlagEncoder package contains the previously overwritten flagencoders of graphhopper
-                // in the ors fork...
-                // MARQ24 removed 'ExGhORSBikeCommonFlagEncoder.SKIP_WAY_TYPE_INFO' because we will use the NextGen
-                // BikeFlagEncoders from now on...
-                // ExGhORSBikeCommonFlagEncoder.SKIP_WAY_TYPE_INFO = true;
-                // MARQ24 MOD END
-
                 if ("preparation".equalsIgnoreCase(RoutingServiceSettings.getWorkingMode())) {
-                    prepareGraphs(graphProps);
+                    prepareGraphs(propertiesFilePath);
                 } else {
-                    _routeProfiles = new RoutingProfilesCollection();
-                    int nRouteInstances = rmc.Profiles.length;
-
-                    RoutingProfileLoadContext loadCntx = new RoutingProfileLoadContext(RoutingServiceSettings.getInitializationThreads());
-                    ExecutorService executor = Executors.newFixedThreadPool(RoutingServiceSettings.getInitializationThreads());
-                    ExecutorCompletionService<RoutingProfile> compService = new ExecutorCompletionService<RoutingProfile>(executor);
-
-                    int nTotalTasks = 0;
-
-                    for (int i = 0; i < nRouteInstances; i++) {
-                        RouteProfileConfiguration rpc = rmc.Profiles[i];
-                        if (!rpc.getEnabled())
-                            continue;
-
-                        Integer[] routeProfiles = rpc.getProfilesTypes();
-
-                        if (routeProfiles != null) {
-                            Callable<RoutingProfile> task = new RoutingProfileLoader(RoutingServiceSettings.getSourceFile(), rpc,
-                                    _routeProfiles, loadCntx);
-                            compService.submit(task);
-                            nTotalTasks++;
-                        }
-                    }
-
-                    LOGGER.info("               ");
-
-                    int nCompletedTasks = 0;
-                    while (nCompletedTasks < nTotalTasks) {
-                        Future<RoutingProfile> future = compService.take();
-
-                        try {
-                            RoutingProfile rp = future.get();
-                            nCompletedTasks++;
-                            if (!_routeProfiles.add(rp))
-                                LOGGER.warn("Routing profile has already been added.");
-                        } catch (InterruptedException e) {
-                            LOGGER.error(e);
-                            e.printStackTrace();
-                        } catch (ExecutionException e) {
-                            LOGGER.error(e);
-                            e.printStackTrace();
-                        }
-                    }
-
-                    executor.shutdown();
-                    loadCntx.releaseElevationProviderCacheAfterAllVehicleProfilesHaveBeenProcessed();
-
-                    LOGGER.info("Total time: " + TimeUtility.getElapsedTime(startTime, true) + ".");
-                    LOGGER.info("========================================================================");
+                    loadGraphs(rmc);
 
                     if (rmc.TrafficInfoConfig != null && rmc.TrafficInfoConfig.Enabled) {
-                        RealTrafficDataProvider.getInstance().initialize(rmc, _routeProfiles);
+                        RealTrafficDataProvider.getInstance().initialize(rmc, routeProfileCollection);
                     }
 
                     if (rmc.UpdateConfig != null && rmc.UpdateConfig.Enabled) {
-                        _profileUpdater = new RoutingProfilesUpdater(rmc.UpdateConfig, _routeProfiles);
-                        _profileUpdater.start();
+                        profileUpdater = new RoutingProfilesUpdater(rmc.UpdateConfig, routeProfileCollection);
+                        profileUpdater.start();
                     }
                 }
 
                 RoutingProfileManagerStatus.setReady(true);
             }
-        } catch (Exception ex) {
-            LOGGER.error("Failed to initialize RoutingProfileManager instance.", ex);
         }
 
         RuntimeUtility.clearMemory(LOGGER);
 
         if (LOGGER.isInfoEnabled())
-            _routeProfiles.printStatistics(LOGGER);
+            routeProfileCollection.printStatistics(LOGGER);
     }
 
     public void destroy() {
-        if (_profileUpdater != null)
-            _profileUpdater.destroy();
+        if (profileUpdater != null)
+            profileUpdater.destroy();
 
         if (RealTrafficDataProvider.getInstance().isInitialized())
             RealTrafficDataProvider.getInstance().destroy();
 
-        _routeProfiles.destroy();
+        routeProfileCollection.destroy();
     }
 
     public RoutingProfilesCollection getProfiles() {
-        return _routeProfiles;
+        return routeProfileCollection;
     }
 
     public boolean updateEnabled() {
-        return _profileUpdater != null;
+        return profileUpdater != null;
     }
 
     public Date getNextUpdateTime() {
-        return _profileUpdater == null ? new Date() : _profileUpdater.getNextUpdate();
+        return profileUpdater == null ? new Date() : profileUpdater.getNextUpdate();
     }
 
     public String getUpdatedStatus() {
-        return _profileUpdater == null ? null : _profileUpdater.getStatus();
+        return profileUpdater == null ? null : profileUpdater.getStatus();
     }
 
-    public List<RouteResult> computeRoutes(RoutingRequest req, boolean invertFlow, boolean oneToMany) throws Exception {
-        if (req.getCoordinates().length <= 1)
-            throw new Exception("Number of coordinates must be greater than 1.");
-
-        List<RouteResult> routes = new ArrayList<RouteResult>(req.getCoordinates().length - 1);
-
-        RoutingProfile rp = getRouteProfile(req, true);
-        RouteSearchParameters searchParams = req.getSearchParameters();
-        PathProcessor pathProcessor = null;
-
-        if (req.getExtraInfo() > 0) {
-            pathProcessor = new ExtraInfoProcessor(rp.getGraphhopper(), req);
-        } else {
-            if (req.getIncludeElevation())
-                pathProcessor = new ElevationSmoothPathProcessor();
-        }
-
-        Coordinate[] coords = req.getCoordinates();
-        Coordinate c0 = coords[0];
-        int nSegments = coords.length - 1;
-        RouteProcessContext routeProcCntx = new RouteProcessContext(pathProcessor);
-        EdgeFilter customEdgeFilter = rp.createAccessRestrictionFilter(coords);
-        List<GHResponse> resp = new ArrayList<GHResponse>();
-
-        for (int i = 1; i <= nSegments; ++i) {
-            if (pathProcessor != null)
-                pathProcessor.setSegmentIndex(i - 1, nSegments);
-
-            Coordinate c1 = coords[i];
-            GHResponse gr = null;
-            if (invertFlow)
-                gr = rp.computeRoute(c0.y, c0.x, c1.y, c1.x, null, null, false, searchParams, customEdgeFilter, routeProcCntx, req.getGeometrySimplify());
-            else
-                gr = rp.computeRoute(c1.y, c1.x, c0.y, c0.x, null, null, false, searchParams, customEdgeFilter, routeProcCntx, req.getGeometrySimplify());
-
-            //if (gr.hasErrors())
-            //	throw new InternalServerException(RoutingErrorCodes.UNKNOWN, String.format("Unable to find a route between points %d (%s) and %d (%s)", i, FormatUtility.formatCoordinate(c0), i + 1, FormatUtility.formatCoordinate(c1)));
-
-            if (!gr.hasErrors()) {
-                resp.clear();
-                resp.add(gr);
-                RouteResult route = new RouteResultBuilder().createMergedRouteResultFromBestPaths(resp, req, (pathProcessor != null && (pathProcessor instanceof ExtraInfoProcessor)) ? ((ExtraInfoProcessor) pathProcessor).getExtras() : null);
-                routes.add(route);
-            } else
-                routes.add(null);
-        }
-
-        return routes;
-    }
-
-    public RouteResult matchTrack(MapMatchingRequest req) throws Exception {
-        //RoutingProfile rp = getRouteProfile(req, false);
-
+    public RouteResult matchTrack(MapMatchingRequest req)  {
+        // Map matching is disabled
         return null;
     }
 
-    public RouteResult computeRoute(RoutingRequest req) throws Exception {
-        List<Integer> skipSegments = req.getSkipSegments();
-        List<GHResponse> routes = new ArrayList<GHResponse>();
+    /**
+     * Compute a route between the way points specified. A multi waypoint route is broken down into individual segments
+     * and the the route is calculated for each segment before being reconstructed into a singe RouteResult object.
+     *
+     * @param request               The information about the route to be generated
+     * @return                      A single RouteResult object containing all route segments merged into one route
+     * @throws StatusCodeException  An error relating to computing the route (e.g. cannot find a start/end point, no
+     *                              valid route etc.)
+     */
+    public RouteResult computeRoute(RoutingRequest request) throws StatusCodeException {
+        List<Integer> skipSegments = request.getSkipSegments();
+        List<GHResponse> routeSegments = new ArrayList<>();
 
-        RoutingProfile rp = getRouteProfile(req, false);
-        RouteSearchParameters searchParams = req.getSearchParameters();
-        PathProcessor pathProcessor = null;
+        RoutingProfile rp = getRouteProfile(request);
+        RouteSearchParameters searchParams = request.getSearchParameters();
+        PathProcessor pathProcessor = new ExtraInfoProcessor(rp.getGraphhopper(), request);
 
-        pathProcessor = new ExtraInfoProcessor(rp.getGraphhopper(), req);
-
-        Coordinate[] coords = req.getCoordinates();
-        Coordinate c0 = coords[0];
-        Coordinate c1;
+        Coordinate[] coords = request.getCoordinates();
+        Coordinate segmentStartCoordinate = coords[0];
+        Coordinate segmentEndCoordinate;
         int nSegments = coords.length - 1;
-        RouteProcessContext routeProcCntx = new RouteProcessContext(pathProcessor);
-        EdgeFilter customEdgeFilter = rp.createAccessRestrictionFilter(coords);
+        RouteProcessContext routeProcCntx = new RouteProcessContext(pathProcessor, searchParams);
         GHResponse prevResp = null;
-        double[] bearings = (req.getContinueStraight() || searchParams.getBearings() != null) ? new double[2] : null;
-        int profileType = req.getSearchParameters().getProfileType();
-        double[] radiuses;
-        if (searchParams.getMaximumRadiuses() != null) {
-            radiuses = new double[2];
-        } else if (_routeProfiles.getRouteProfile(profileType).getConfiguration().hasMaximumSnappingRadius()) {
-            radiuses = new double[2];
-        } else {
-            radiuses = null;
-        }
+        boolean hasBearings = (request.getContinueStraight() || searchParams.getBearings() != null);
+        int profileType = request.getSearchParameters().getProfileType();
 
         for (int i = 1; i <= nSegments; ++i) {
-            c1 = coords[i];
+            segmentEndCoordinate = coords[i];
+            RouteSegmentProperties segmentProperties = new RouteSegmentProperties(segmentStartCoordinate, segmentEndCoordinate, i-1);
 
-            if (pathProcessor != null)
-                pathProcessor.setSegmentIndex(i - 1, nSegments);
+            pathProcessor.setSegmentIndex(i - 1, nSegments);
 
-            if (bearings != null) {
-                bearings[0] = Double.NaN;
-                if (i > 1 && req.getContinueStraight()) {
-                    bearings[0] = getHeadingDirection(prevResp);
+            if (hasBearings) {
+                double leaveBearing = Double.NaN;
+                double entryBearing = Double.NaN;
+
+                if (i>1 && request.getContinueStraight()) {
+                    leaveBearing = getHeadingDirection(prevResp);
                 }
 
                 if (searchParams.getBearings() != null) {
-                    bearings[0] = searchParams.getBearings()[i - 1];
-                    bearings[1] = (i == nSegments && searchParams.getBearings().length != nSegments + 1) ? Double.NaN : searchParams.getBearings()[i];
+                    leaveBearing = searchParams.getBearings()[i-1];
+
+                    if (i == nSegments && searchParams.getBearings().length == nSegments + 1)
+                        entryBearing = searchParams.getBearings()[i];
+
                 }
+
+                segmentProperties.setStartBearing(leaveBearing);
+                segmentProperties.setDestinationBearing(entryBearing);
             }
+
+            segmentProperties.setIsSkippedSegment(skipSegments.contains(i));
+            segmentProperties.setSimplifyGeometry(request.getGeometrySimplify());
 
             if (searchParams.getMaximumRadiuses() != null) {
-                radiuses[0] = searchParams.getMaximumRadiuses()[i - 1];
-                radiuses[1] = searchParams.getMaximumRadiuses()[i];
-            }else {
-                try {
-                    int maximumSnappingRadius = _routeProfiles.getRouteProfile(profileType).getConfiguration().getMaximumSnappingRadius();
-                    radiuses[0] = maximumSnappingRadius;
-                    radiuses[1] = maximumSnappingRadius;
-                 } catch (Exception ex) {
-                }
-
-            }
-
-            GHResponse gr;
-            if ((skipSegments.contains(i))) {
-                gr = rp.computeRoute(c0.y, c0.x, c1.y, c1.x, bearings, radiuses, true, searchParams, customEdgeFilter, routeProcCntx, req.getGeometrySimplify());
+                segmentProperties.setStartSearchRadius(searchParams.getMaximumRadiuses()[i-1]);
+                segmentProperties.setDestinationSearchRadius(searchParams.getMaximumRadiuses()[i]);
             } else {
-                gr = rp.computeRoute(c0.y, c0.x, c1.y, c1.x, bearings, radiuses, false, searchParams, customEdgeFilter, routeProcCntx, req.getGeometrySimplify());
-            }
+                try {
+                    int maxSnappingRadius = routeProfileCollection.getRouteProfile(profileType).getConfiguration().getMaximumSnappingRadius();
 
-            if (gr.hasErrors()) {
-                if (gr.getErrors().size() > 0) {
-                    if (gr.getErrors().get(0) instanceof com.graphhopper.util.exceptions.ConnectionNotFoundException) {
-                        throw new RouteNotFoundException(
-                                RoutingErrorCodes.ROUTE_NOT_FOUND,
-                                String.format("Unable to find a route between points %d (%s) and %d (%s).",
-                                        i,
-                                        FormatUtility.formatCoordinate(c0),
-                                        i + 1,
-                                        FormatUtility.formatCoordinate(c1))
-                        );
-                    } else if(gr.getErrors().get(0) instanceof com.graphhopper.util.exceptions.PointNotFoundException) {
-                        String message = "";
-                        for(Throwable error: gr.getErrors()) {
-                            if(!StringUtility.isEmpty(message))
-                                message = message + "; ";
-                            message = message + error.getMessage();
-                        }
-                        throw new PointNotFoundException(message);
-                    } else {
-                        throw new InternalServerException(RoutingErrorCodes.UNKNOWN, gr.getErrors().get(0).getMessage());
-                    }
-                } else {
-                    // If there are no errors stored but there is indication that there are errors, something strange
-                    // has happened, so return that a route could not be found
-                    throw new RouteNotFoundException(
-                            RoutingErrorCodes.ROUTE_NOT_FOUND,
-                            String.format("Unable to find a route between points %d (%s) and %d (%s).",
-                                    i,
-                                    FormatUtility.formatCoordinate(c0),
-                                    i + 1,
-                                    FormatUtility.formatCoordinate(c1))
-                    );
+                    segmentProperties.setStartSearchRadius(maxSnappingRadius);
+                    segmentProperties.setDestinationSearchRadius(maxSnappingRadius);
+                } catch (InternalServerException exception) {
+                    LOGGER.debug(exception.getMessage());
                 }
+
+            }
+            GHResponse gr = rp.computeRouteSegment(segmentProperties, routeProcCntx);
+
+            Throwable error = generateErrors(gr, segmentProperties);
+            if (error != null) {
+                throw (StatusCodeException) error;
             }
 
             prevResp = gr;
-            routes.add(gr);
-            c0 = c1;
+            routeSegments.add(gr);
+            segmentStartCoordinate = segmentEndCoordinate;
         }
-        routes = enrichDirectRoutesTime(routes);
-        return new RouteResultBuilder().createMergedRouteResultFromBestPaths(routes, req, (pathProcessor != null && (pathProcessor instanceof ExtraInfoProcessor)) ? ((ExtraInfoProcessor) pathProcessor).getExtras() : null);
+        routeSegments = enrichDirectRoutesTime(routeSegments);
+        return new RouteResultBuilder().createMergedRouteResultFromBestPaths(routeSegments, request, (pathProcessor != null && (pathProcessor instanceof ExtraInfoProcessor)) ? ((ExtraInfoProcessor) pathProcessor).getExtras() : null);
+    }
+
+    /**
+     * Method that throws ors friendly exceptions if any errors were encountered during the route calculation.
+     *
+     * @param routeResponse             The response from the GraphHopper routing request
+     * @param segmentProps              Properties for the segment that the route is being calculated for
+     * @return                          A formatted ORS exception dependant on what went wrong in GH
+     */
+    private Throwable generateErrors(GHResponse routeResponse, RouteSegmentProperties segmentProps) {
+        Throwable error = null;
+
+        if (routeResponse.hasErrors()) {
+            if (routeResponse.getErrors().isEmpty() || routeResponse.getErrors().get(0) instanceof com.graphhopper.util.exceptions.ConnectionNotFoundException) {
+                error =  new RouteNotFoundException(
+                        RoutingErrorCodes.ROUTE_NOT_FOUND,
+                        String.format("Unable to find a route between points %d (%s) and %d (%s).",
+                                segmentProps.getSegmentNumber(),
+                                FormatUtility.formatCoordinate(segmentProps.getStartCoordinate()),
+                                segmentProps.getSegmentNumber() + 1,
+                                FormatUtility.formatCoordinate(segmentProps.getDestinationCoordinate()))
+                );
+            } else if (routeResponse.getErrors().get(0) instanceof com.graphhopper.util.exceptions.PointNotFoundException) {
+                StringBuilder message = new StringBuilder();
+                for(Throwable errorGenerated: routeResponse.getErrors()) {
+                    if(message.length() != 0)
+                        message.append("; ");
+                    message.append(errorGenerated.getMessage());
+                }
+                error = new PointNotFoundException(message.toString());
+            } else {
+                error = new InternalServerException(RoutingErrorCodes.UNKNOWN, routeResponse.getErrors().get(0).getMessage());
+            }
+        }
+
+        return error;
     }
 
     /**
@@ -488,8 +423,18 @@ public class RoutingProfileManager {
         return routes;
     }
 
-    private double getHeadingDirection(GHResponse resp) {
-        PointList points = resp.getBest().getPoints();
+    /**
+     * Calculate the bearing of travel (from true north) at the end of the route contained in the route response
+     *
+     * @param routeResponse     The GraphHopper route response containing the route that we want the direction for
+     * @return                  The bearing in degrees (from true north) that the traveller entered the end point at
+     */
+    private double getHeadingDirection(GHResponse routeResponse) {
+        if (routeResponse == null) {
+            return Double.NaN;
+        }
+
+        PointList points = routeResponse.getBest().getPoints();
         int nPoints = points.size();
         if (nPoints > 1) {
             double lon1 = points.getLon(nPoints - 2);
@@ -503,83 +448,70 @@ public class RoutingProfileManager {
             }
             return Helper.ANGLE_CALC.calcAzimuth(lat1, lon1, lat2, lon2);
         } else
-            return 0;
+            return Double.NaN;
     }
 
-    public RoutingProfile getRouteProfile(RoutingRequest req, boolean oneToMany) throws Exception {
-        RouteSearchParameters searchParams = req.getSearchParameters();
+    /**
+     * Get the RoutingProfile to use for generating a route based on the information passed in the request.
+     *
+     * @param request               The information to use for identifying the routing profile to use
+     * @return                      A RoutingProfile object containing information needed to generate a route
+     * @throws StatusCodeException  An error thrown indicating that a valid routing profile could not be obtained
+     */
+    public RoutingProfile getRouteProfile(RoutingRequest request) throws StatusCodeException {
+        RouteSearchParameters searchParams = request.getSearchParameters();
         int profileType = searchParams.getProfileType();
 
-        boolean hasAvoidAreas = searchParams.hasAvoidAreas();
         boolean dynamicWeights = searchParams.requiresDynamicWeights();
 
-        RoutingProfile rp = _routeProfiles.getRouteProfile(profileType, !dynamicWeights);
+        RoutingProfile rp = routeProfileCollection.getRouteProfile(profileType, !dynamicWeights);
 
-        if (rp == null && dynamicWeights == false)
-            rp = _routeProfiles.getRouteProfile(profileType, false);
+        if (rp == null && !dynamicWeights)
+            rp = routeProfileCollection.getRouteProfile(profileType, false);
 
         if (rp == null)
-            throw new InternalServerException(RoutingErrorCodes.UNKNOWN, "Unable to get an appropriate route profile for RoutePreference = " + RoutingProfileType.getName(req.getSearchParameters().getProfileType()));
+            throw new InternalServerException(RoutingErrorCodes.UNKNOWN, "Unable to get an appropriate route profile for RoutePreference = " + RoutingProfileType.getName(request.getSearchParameters().getProfileType()));
 
         RouteProfileConfiguration config = rp.getConfiguration();
 
-        if (config.getMaximumDistance() > 0
-                || (dynamicWeights && config.getMaximumDistanceDynamicWeights() > 0)
-                || config.getMaximumWayPoints() > 0
-                || (hasAvoidAreas && config.getMaximumDistanceAvoidAreas() > 0)) {
-            Coordinate[] coords = req.getCoordinates();
-            int nCoords = coords.length;
-            if (config.getMaximumWayPoints() > 0) {
-                if (!oneToMany && nCoords > config.getMaximumWayPoints())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The specified number of waypoints must not be greater than " + Integer.toString(config.getMaximumWayPoints()) + ".");
-            }
-
-            if (config.getMaximumDistance() > 0
-                    || (dynamicWeights && config.getMaximumDistanceDynamicWeights() > 0)
-                    || (hasAvoidAreas && config.getMaximumDistanceAvoidAreas() > 0)) {
-                double longestSegmentDist = 0.0;
-                DistanceCalc distCalc = Helper.DIST_EARTH;
-
-                Coordinate c0 = coords[0], c1 = null;
-                double totalDist = 0.0;
-
-                if (oneToMany) {
-                    for (int i = 1; i < nCoords; i++) {
-                        c1 = coords[i];
-                        totalDist = distCalc.calcDist(c0.y, c0.x, c1.y, c1.x);
-                        if (totalDist > longestSegmentDist)
-                            longestSegmentDist = totalDist;
-                    }
-                } else {
-                    if (nCoords == 2) {
-                        c1 = coords[1];
-                        totalDist = distCalc.calcDist(c0.y, c0.x, c1.y, c1.x);
-                        longestSegmentDist = totalDist;
-                    } else {
-                        double dist = 0;
-                        for (int i = 1; i < nCoords; i++) {
-                            c1 = coords[i];
-                            dist = distCalc.calcDist(c0.y, c0.x, c1.y, c1.x);
-                            totalDist += dist;
-                            if (dist > longestSegmentDist)
-                                longestSegmentDist = dist;
-
-                            c0 = c1;
-                        }
-                    }
-                }
-
-                if (config.getMaximumDistance() > 0 && totalDist > config.getMaximumDistance())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The approximated route distance must not be greater than " + Double.toString(config.getMaximumDistance()) + " meters.");
-
-                if (dynamicWeights && config.getMaximumDistanceDynamicWeights() > 0 && totalDist > config.getMaximumDistanceDynamicWeights())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "By dynamic weighting, the approximated distance of a route segment must not be greater than " + Double.toString(config.getMaximumDistanceDynamicWeights()) + " meters.");
-                if (hasAvoidAreas && config.getMaximumDistanceAvoidAreas() > 0 && totalDist > config.getMaximumDistanceAvoidAreas())
-                    throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "With areas to avoid, the approximated route distance must not be greater than " + Double.toString(config.getMaximumDistanceAvoidAreas()) + " meters.");
-            }
+        Coordinate[] coords = request.getCoordinates();
+        int nCoords = coords.length;
+        if (config.getMaximumWayPoints() > 0 && nCoords > config.getMaximumWayPoints()) {
+            throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The specified number of waypoints must not be greater than " + config.getMaximumWayPoints() + ".");
         }
 
+        validateMaximumDistances(config, searchParams, coords);
+
         return rp;
+    }
+
+    /**
+     * Validate the estimated distance between the coordinates making up waypoints of a route against limits applied in
+     * config settings.
+     *
+     * @param config        The config information for the routing profile
+     * @param searchParams  Parameters that will be applied to the routing request
+     * @param coords        The coordinates that make up the waypints of the route
+     * @throws ServerLimitExceededException Indication that a maximum distance has been exceeded
+     */
+    private void validateMaximumDistances(RouteProfileConfiguration config, RouteSearchParameters searchParams, Coordinate[] coords) throws ServerLimitExceededException {
+        boolean hasAvoidAreas = searchParams.hasAvoidAreas();
+        boolean dynamicWeights = searchParams.requiresDynamicWeights();
+
+        if (config.getMaximumDistance() > 0
+                || (dynamicWeights && config.getMaximumDistanceDynamicWeights() > 0)
+                || (hasAvoidAreas && config.getMaximumDistanceAvoidAreas() > 0)) {
+
+            double totalDist = GeomUtility.calculateDistance(coords);
+
+            if (config.getMaximumDistance() > 0 && totalDist > config.getMaximumDistance())
+                throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "The approximated route distance must not be greater than " + config.getMaximumDistance() + " meters.");
+
+            if (dynamicWeights && config.getMaximumDistanceDynamicWeights() > 0 && totalDist > config.getMaximumDistanceDynamicWeights())
+                throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "By dynamic weighting, the approximated distance of a route segment must not be greater than " + config.getMaximumDistanceDynamicWeights() + " meters.");
+            if (hasAvoidAreas && config.getMaximumDistanceAvoidAreas() > 0 && totalDist > config.getMaximumDistanceAvoidAreas())
+                throw new ServerLimitExceededException(RoutingErrorCodes.REQUEST_EXCEEDS_SERVER_LIMIT, "With areas to avoid, the approximated route distance must not be greater than " + config.getMaximumDistanceAvoidAreas() + " meters.");
+        }
     }
 
     /**
@@ -587,23 +519,22 @@ public class RoutingProfileManager {
      *
      * @param parameters The input is a {@link IsochroneSearchParameters}
      * @return Return is a {@link IsochroneMap} holding the calculated data plus statistical data if the attributes where set.
-     * @throws Exception
+     * @throws InternalServerException
      */
-    public IsochroneMap buildIsochrone(IsochroneSearchParameters parameters) throws Exception {
+    public IsochroneMap buildIsochrone(IsochroneSearchParameters parameters) throws InternalServerException {
 
         int profileType = parameters.getRouteParameters().getProfileType();
-        RoutingProfile rp = _routeProfiles.getRouteProfile(profileType, false);
+        RoutingProfile rp = routeProfileCollection.getRouteProfile(profileType, false);
 
         return rp.buildIsochrone(parameters);
     }
 
-    public MatrixResult computeMatrix(MatrixRequest req) throws Exception {
-        RoutingProfile rp = _routeProfiles.getRouteProfile(req.getProfileType(), !req.getFlexibleMode());
+    public MatrixResult computeMatrix(MatrixRequest req) throws StatusCodeException {
+        RoutingProfile rp = routeProfileCollection.getRouteProfile(req.getProfileType(), !req.getFlexibleMode());
 
         if (rp == null)
             throw new InternalServerException(MatrixErrorCodes.UNKNOWN, "Unable to find an appropriate routing profile.");
 
         return rp.computeMatrix(req);
     }
-
 }

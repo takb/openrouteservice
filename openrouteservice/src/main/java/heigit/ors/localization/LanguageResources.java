@@ -13,6 +13,8 @@
  */
 package heigit.ors.localization;
 
+import heigit.ors.exceptions.InternalServerException;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -43,12 +45,12 @@ public class LanguageResources
 		return _lang;
 	}
 	
-	public String getTranslation(String name) throws Exception
+	public String getTranslation(String name) throws InternalServerException
 	{
 		return getTranslation(name, false);
 	}
 	
-	public String getTranslation(String name, boolean throwException) throws Exception
+	public String getTranslation(String name, boolean throwException) throws InternalServerException
 	{
 		if (name == null)
 			return null;
@@ -59,7 +61,7 @@ public class LanguageResources
 		else
 		{
 			if (throwException)
-				throw new Exception("Unable to find translation for '" + name + "' in language '" + _lang.getLangCode() + "'.");
+				throw new InternalServerException("Unable to find translation for '" + name + "' in language '" + _lang.getLangCode() + "'.");
 			else
 				return null;
 		}

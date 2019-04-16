@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import heigit.ors.exceptions.InternalServerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,14 +38,14 @@ public class LocalizationManager {
 	private Map<String, LanguageResources> _langResources = null;
 	private static volatile LocalizationManager m_instance = null;
 
-	private LocalizationManager() throws Exception
+	private LocalizationManager() throws InternalServerException
 	{
 		_langResources = new HashMap<String, LanguageResources>();
 
 		loadLocalizations();
 	}
 
-	public static LocalizationManager getInstance() throws Exception
+	public static LocalizationManager getInstance() throws InternalServerException
 	{
 		if(null == m_instance)
 		{
@@ -57,7 +58,7 @@ public class LocalizationManager {
 		return m_instance;
 	}
 
-	private void loadLocalizations() throws Exception
+	private void loadLocalizations() throws InternalServerException
 	{
 		File classFile = new File(getClass().getProtectionDomain().getCodeSource().getLocation().getFile());
 		String classPath = classFile.getAbsolutePath();
@@ -70,7 +71,7 @@ public class LocalizationManager {
 		File[] files = new File(localesPath.toString()).listFiles();
 
 		if (files == null)
-			throw new Exception("Resources can not be found.");
+			throw new InternalServerException("Resources can not be found.");
 
 		for (File file : files) {
 			try

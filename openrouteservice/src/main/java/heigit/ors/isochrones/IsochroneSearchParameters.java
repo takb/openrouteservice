@@ -19,6 +19,7 @@ import heigit.ors.common.TravelRangeType;
 import heigit.ors.routing.RouteSearchParameters;
 
 public class IsochroneSearchParameters {
+    public static final String POPULATION_ATTR = "total_pop";
     private int _travellerId;
     private Coordinate _location;
     private Boolean _reverseDirection = false;

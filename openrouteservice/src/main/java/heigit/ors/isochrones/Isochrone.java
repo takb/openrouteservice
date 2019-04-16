@@ -16,6 +16,7 @@ package heigit.ors.isochrones;
 import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Geometry;
 import heigit.ors.common.AttributeValue;
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.util.FormatUtility;
 import heigit.ors.util.GeomUtility;
 import heigit.ors.util.UnitsConverter;
@@ -65,7 +66,7 @@ public class Isochrone {
         return maxRadius;
     }
 
-    public double calcArea(String units) throws Exception {
+    public double calcArea(String units) throws InternalServerException {
         double area = calcArea(true);
         if (units != null) {
             switch (units) {
@@ -83,7 +84,7 @@ public class Isochrone {
 
     }
 
-    public double calcArea(Boolean inMeters) throws Exception {
+    public double calcArea(Boolean inMeters) throws InternalServerException {
         if (area == 0.0) {
             area = FormatUtility.roundToDecimals(GeomUtility.getArea(geometry, inMeters), 2);
         }
@@ -108,7 +109,7 @@ public class Isochrone {
         return hasArea;
     }
 
-    public double calcReachfactor(String units) throws Exception {
+    public double calcReachfactor(String units) {
 
         double r = getMaxRadius(units);
         double maxArea = Math.PI * r * r;

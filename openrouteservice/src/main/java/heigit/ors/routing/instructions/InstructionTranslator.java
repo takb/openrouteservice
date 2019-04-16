@@ -17,6 +17,7 @@ import com.graphhopper.util.Helper;
 
 import heigit.ors.common.ArrivalDirection;
 import heigit.ors.common.CardinalDirection;
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.localization.LanguageResources;
 
 public class InstructionTranslator 
@@ -39,7 +40,7 @@ public class InstructionTranslator
 	private String[] _numerals;
 	private String[] _turnManeuvers;
 
-	public InstructionTranslator(LanguageResources resources) throws Exception
+	public InstructionTranslator(LanguageResources resources) throws InternalServerException
 	{
 		_resources = resources;
 
@@ -158,8 +159,7 @@ public class InstructionTranslator
 			return str.replace("{way_name}", wayName);
 	}
 
-	public String getDepart(CardinalDirection direction, String wayName) throws Exception
-	{
+	public String getDepart(CardinalDirection direction, String wayName) {
 		boolean isWayNull = Helper.isEmpty(wayName);
 		String str = isWayNull ? _actionDepartDefault: _actionDepartName;
 
@@ -169,8 +169,7 @@ public class InstructionTranslator
 			return str.replace("{direction}", _directions[direction.ordinal()]).replace("{way_name}", wayName);
 	}
 	
-	public String getArrive(ArrivalDirection direction, String wayName) throws Exception
-	{
+	public String getArrive(ArrivalDirection direction, String wayName) {
 		boolean isWayNull = Helper.isEmpty(wayName);
 		
 		String str = isWayNull ? _actionArriveDefault[direction.ordinal()]: _actionArriveName[direction.ordinal()];

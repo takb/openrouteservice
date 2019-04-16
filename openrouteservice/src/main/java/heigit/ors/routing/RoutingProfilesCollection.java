@@ -16,6 +16,7 @@ package heigit.ors.routing;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import heigit.ors.exceptions.InternalServerException;
 import org.apache.log4j.Logger;
 
 import heigit.ors.util.RuntimeUtility;
@@ -115,7 +116,7 @@ public class RoutingProfilesCollection {
 		return result;
 	}
 
-	public RoutingProfile getRouteProfile(int routePref, boolean chEnabled) throws Exception {
+	public RoutingProfile getRouteProfile(int routePref, boolean chEnabled) {
 		int routePrefKey = getRoutePreferenceKey(routePref, chEnabled);
 		//Fall back to non-CH version if CH routing profile does not exist
 		if (!m_routeProfiles.containsKey(routePrefKey)){
@@ -140,16 +141,16 @@ public class RoutingProfilesCollection {
 		return true;
 	}
 	
-	public RoutingProfile getRouteProfile(int routePref) throws Exception
+	public RoutingProfile getRouteProfile(int routePref) throws InternalServerException
 	{
 		RoutingProfile rp = getRouteProfileByKey(getRoutePreferenceKey(routePref, false));
-		//if (rp == null)
-		//	rp = getRouteProfileByKey(getRoutePreferenceKey(routePref, false));
+		if (rp == null)
+			throw new InternalServerException("Could not access routing profile");
 		
 		return rp;
 	}
 
-	private RoutingProfile getRouteProfileByKey(int routePrefKey) throws Exception {
+	private RoutingProfile getRouteProfileByKey(int routePrefKey) {
 		if (!m_routeProfiles.containsKey(routePrefKey))
 			return null;
 		else {

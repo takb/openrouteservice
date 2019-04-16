@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
+import heigit.ors.exceptions.InternalServerException;
 import org.apache.log4j.Logger;
 
 public class PluginManager<T extends Plugin> {
@@ -31,7 +32,7 @@ public class PluginManager<T extends Plugin> {
 	private static Map<String, Object> _pluginMgrCache = new HashMap<String, Object>();
 
 	@SuppressWarnings("unchecked")
-	public synchronized static <T extends Plugin> PluginManager<T> getPluginManager(Class<?> cls) throws Exception
+	public synchronized static <T extends Plugin> PluginManager<T> getPluginManager(Class<?> cls) throws InternalServerException
 	{
 		PluginManager<T> pmgr = null;
 		pmgr = (PluginManager<T>)_pluginMgrCache.get(cls.getName());
@@ -44,9 +45,9 @@ public class PluginManager<T extends Plugin> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public PluginManager(Class<?> cls) throws Exception {
+	public PluginManager(Class<?> cls) throws InternalServerException {
 		if (cls.equals(getClass()))
-			throw new Exception("Wrong class parameter");
+			throw new InternalServerException("Wrong class parameter");
 		_loader = (ServiceLoader<T>)ServiceLoader.load(cls);
 		_lockObj = new Object();
 	}

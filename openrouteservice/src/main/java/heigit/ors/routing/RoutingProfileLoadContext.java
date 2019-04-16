@@ -42,7 +42,7 @@ public class RoutingProfileLoadContext
 		}
 	}
 
-	public void releaseElevationProviderCacheAfterAllVehicleProfilesHaveBeenProcessed() {
+	public void releaseElevationProviderCache() {
 		if(_elevProvider != null){
 			_elevProvider.release();
 		}

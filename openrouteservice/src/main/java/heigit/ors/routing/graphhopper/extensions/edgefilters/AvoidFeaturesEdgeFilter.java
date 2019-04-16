@@ -13,6 +13,7 @@
  */
 package heigit.ors.routing.graphhopper.extensions.edgefilters;
 
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.routing.AvoidFeatureFlags;
 import heigit.ors.routing.RouteSearchParameters;
 import heigit.ors.routing.RoutingProfileCategory;
@@ -34,7 +35,7 @@ public class AvoidFeaturesEdgeFilter implements EdgeFilter {
 
 	private static final int NOT_TOLLWAYS = ~AvoidFeatureFlags.Tollways;
 
-	public AvoidFeaturesEdgeFilter(int profileType, RouteSearchParameters searchParams, GraphStorage graphStorage) throws Exception {
+	public AvoidFeaturesEdgeFilter(int profileType, RouteSearchParameters searchParams, GraphStorage graphStorage) throws InternalServerException {
 		this._buffer = new byte[10];
 
 		_profileCategory = RoutingProfileCategory.getFromRouteProfile(profileType);
@@ -43,7 +44,7 @@ public class AvoidFeaturesEdgeFilter implements EdgeFilter {
 
 		_storage = GraphStorageUtils.getGraphExtension(graphStorage, WayCategoryGraphStorage.class);
 		if (_storage == null)
-			throw new Exception("ExtendedGraphStorage for avoid features was not found.");
+			throw new InternalServerException("ExtendedGraphStorage for avoid features was not found.");
 
 		TollwaysGraphStorage extTollways = GraphStorageUtils.getGraphExtension(graphStorage, TollwaysGraphStorage.class);
 		if (extTollways != null)

@@ -15,63 +15,141 @@ package heigit.ors.isochrones;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Envelope;
+import heigit.ors.common.TravelRangeType;
+import heigit.ors.exceptions.InternalServerException;
+import heigit.ors.isochrones.statistics.StatisticsProvider;
+import heigit.ors.isochrones.statistics.StatisticsProviderConfiguration;
+import heigit.ors.isochrones.statistics.StatisticsProviderFactory;
+import heigit.ors.services.isochrones.IsochronesServiceSettings;
+import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class IsochroneMap {
-	private int _travellerId;
-	private Envelope _envelope;
-	private List<Isochrone> _isochrones;
-	private Coordinate _center;
+	private static final Logger LOGGER = Logger.getLogger(IsochroneMap.class.getName());
+	private int travellerId;
+	private Envelope envelope;
+	private List<Isochrone> isochrones;
+	private Coordinate center;
 
     public IsochroneMap(int travellerId, Coordinate center)
 	{
-		_travellerId = travellerId;
-		_center = center;
-		_isochrones = new ArrayList<Isochrone>();
-		_envelope = new Envelope();
+		this.travellerId = travellerId;
+		this.center = center;
+		isochrones = new ArrayList<>();
+		envelope = new Envelope();
+	}
+
+	/**
+	 * Add the various attributes to an isochrone based on the {@link IsochroneSearchParameters} that were requested
+	 *
+	 * @param parameters				The parameters that are being requested for the isochrone
+	 * @throws InternalServerException	An error whilst calculating one of the property values
+	 */
+	public void addAttributes(IsochroneSearchParameters parameters) throws InternalServerException {
+		if (parameters.hasAttribute(IsochroneSearchParameters.POPULATION_ATTR)) {
+			addPopulation();
+		}
+
+		if (parameters.hasAttribute("reachfactor") || parameters.hasAttribute("area")) {
+
+			for (Isochrone isochrone : this.getIsochrones()) {
+
+				String units = parameters.getUnits();
+				String areaUnits = parameters.getAreaUnits();
+
+				if (areaUnits != null)
+					units = areaUnits;
+
+				double area = isochrone.calcArea(units);
+
+				if (parameters.hasAttribute("area")) {
+					isochrone.setArea(area);
+				}
+
+				if (parameters.hasAttribute("reachfactor") && parameters.getRangeType() == TravelRangeType.Time) {
+					isochrone.setReachfactor(isochrone.calcReachfactor(units));
+				}
+			}
+		}
+	}
+
+	/**
+	 * Add population information to the isochrone.
+	 *
+	 * @throws InternalServerException	A problem relating to accessing or calculating population information.
+	 */
+	private void addPopulation() throws InternalServerException {
+		try {
+
+			Map<StatisticsProviderConfiguration, List<String>> mapProviderToAttrs = new HashMap<>();
+
+			StatisticsProviderConfiguration provConfig = IsochronesServiceSettings.getStatsProviders().get(IsochroneSearchParameters.POPULATION_ATTR);
+
+			if (provConfig != null) {
+				List<String> attrList = new ArrayList<>();
+				attrList.add(IsochroneSearchParameters.POPULATION_ATTR);
+				mapProviderToAttrs.put(provConfig, attrList);
+			}
+
+			for (Map.Entry<StatisticsProviderConfiguration, List<String>> entry : mapProviderToAttrs.entrySet()) {
+				provConfig = entry.getKey();
+				StatisticsProvider provider = StatisticsProviderFactory.getProvider(provConfig.getName(), provConfig.getParameters());
+				String[] provAttrs = provConfig.getMappedProperties(entry.getValue());
+
+				for (Isochrone isochrone : this.getIsochrones()) {
+					double[] attrValues = provider.getStatistics(isochrone, provAttrs);
+					isochrone.setAttributes(entry.getValue(), attrValues, provConfig.getAttribution());
+				}
+			}
+		} catch (Exception ex) {
+			LOGGER.error(ex);
+			throw new InternalServerException(IsochronesErrorCodes.UNKNOWN, "Unable to compute isochrone " + IsochroneSearchParameters.POPULATION_ATTR + " attribute.");
+		}
 	}
 	
 	public int getTravellerId()
 	{
-		return _travellerId;
+		return travellerId;
 	}
 
 	public boolean isEmpty()
 	{
-		return _isochrones.size() == 0;
+		return isochrones.isEmpty();
 	}
 
 	public Coordinate getCenter() 
 	{
-		return _center;
+		return center;
 	}
 
 
     public Iterable<Isochrone> getIsochrones()
 	{
-		return _isochrones;
+		return isochrones;
 	}
 	
 	public int getIsochronesCount()
 	{
-		return _isochrones.size();
+		return isochrones.size();
 	}
 
 	public Isochrone getIsochrone(int index)
 	{
-		return _isochrones.get(index);
+		return isochrones.get(index);
 	}
 
 	public void addIsochrone(Isochrone isochrone)
 	{
-		_isochrones.add(isochrone);
-		_envelope.expandToInclude(isochrone.getGeometry().getEnvelopeInternal());
+		isochrones.add(isochrone);
+		envelope.expandToInclude(isochrone.getGeometry().getEnvelopeInternal());
 	}
 
 	public Envelope getEnvelope()
 	{
-		return _envelope;
+		return envelope;
 	}
 }

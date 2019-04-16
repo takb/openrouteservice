@@ -26,6 +26,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Envelope;
 
 import com.vividsolutions.jts.geom.LineString;
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.plugins.PluginManager;
 import heigit.ors.routing.configuration.RouteProfileConfiguration;
 import heigit.ors.routing.graphhopper.extensions.graphbuilders.GraphBuilder;
@@ -40,7 +41,7 @@ public class GraphProcessContext {
 	private List<GraphStorageBuilder> _storageBuilders;
 	private GraphStorageBuilder[] _arrStorageBuilders;
 
-	public GraphProcessContext(RouteProfileConfiguration config) throws Exception
+	public GraphProcessContext(RouteProfileConfiguration config) throws InternalServerException
 	{
 		_bbox = config.getExtent();
 		PluginManager<GraphStorageBuilder> mgrGraphStorageBuilders = PluginManager.getPluginManager(GraphStorageBuilder.class);

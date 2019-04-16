@@ -13,13 +13,20 @@
  */
 package heigit.ors.routing.graphhopper.extensions.edgefilters;
 
-import java.util.ArrayList;
-
 import com.graphhopper.routing.util.EdgeFilter;
 import com.graphhopper.util.EdgeIteratorState;
-import heigit.ors.routing.graphhopper.extensions.edgefilters.core.AvoidFeaturesCoreEdgeFilter;
+
+import java.util.ArrayList;
 
 public class EdgeFilterSequence extends ArrayList<EdgeFilter> implements EdgeFilter {
+	public  EdgeFilterSequence() {
+		super();
+	}
+
+	public EdgeFilterSequence(EdgeFilter defaultFilter) {
+		super();
+		this.add(defaultFilter);
+	}
 
 	private String name;
 	@Override

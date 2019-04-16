@@ -15,6 +15,7 @@ package heigit.ors.util;
 
 import com.graphhopper.util.DistanceCalc;
 import com.graphhopper.util.DistanceCalcEarth;
+import com.graphhopper.util.Helper;
 import com.graphhopper.util.PointList;
 import com.graphhopper.util.shapes.BBox;
 import com.vividsolutions.jts.geom.*;
@@ -272,6 +273,40 @@ public class GeomUtility {
 			theta += (Math.PI * 2);
 
 		return Math.toDegrees(theta);
+	}
+
+
+
+	/**
+	 * Caclulate straight line distances between all waypoints of a route
+	 *
+	 * @param coords    Coordinates representing the waypoints of the route being requested
+	 * @return          The combined straight line distances (in metres) between successive waypoints
+	 */
+	public static double calculateDistance(Coordinate[] coords) {
+		DistanceCalc distCalc = Helper.DIST_EARTH;
+
+		Coordinate c0 = coords[0];
+		Coordinate c1;
+		double totalDist = 0.0;
+
+		int nCoords = coords.length;
+
+		if (nCoords == 2) {
+			c1 = coords[1];
+			totalDist = distCalc.calcDist(c0.y, c0.x, c1.y, c1.x);
+		} else {
+			double dist = 0;
+			for (int i = 1; i < nCoords; i++) {
+				c1 = coords[i];
+				dist = distCalc.calcDist(c0.y, c0.x, c1.y, c1.x);
+				totalDist += dist;
+
+				c0 = c1;
+			}
+		}
+
+		return totalDist;
 	}
 
 }

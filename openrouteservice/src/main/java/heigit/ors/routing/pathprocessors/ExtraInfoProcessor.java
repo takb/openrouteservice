@@ -22,6 +22,7 @@ import com.graphhopper.routing.weighting.PriorityWeighting;
 import com.graphhopper.storage.GraphExtension;
 import com.graphhopper.util.EdgeIteratorState;
 import com.graphhopper.util.PointList;
+import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.routing.*;
 import heigit.ors.routing.graphhopper.extensions.ORSGraphHopper;
 import heigit.ors.routing.graphhopper.extensions.storages.*;
@@ -88,7 +89,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 	private byte[] buffer;
 	private boolean _lastSegment;
 
-	public ExtraInfoProcessor(ORSGraphHopper graphHopper, RoutingRequest req) throws Exception
+	public ExtraInfoProcessor(ORSGraphHopper graphHopper, RoutingRequest req) throws InternalServerException
 	{
 		_profileType = req.getSearchParameters().getProfileType();
 		int extraInfo = req.getExtraInfo();
@@ -103,7 +104,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extWayCategory = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), WayCategoryGraphStorage.class);
 			
 			if (_extWayCategory == null)
-				throw new Exception("WayCategory storage is not found.");
+				throw new InternalServerException("WayCategory storage is not found.");
 			
 			_wayCategoryInfo = new RouteExtraInfo("waycategory");
 			_wayCategoryInfoBuilder = new SimpleRouteExtraInfoBuilder(_wayCategoryInfo);
@@ -114,7 +115,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extWaySurface = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), WaySurfaceTypeGraphStorage.class);
 			
 			if (_extWaySurface == null)
-				throw new Exception("WaySurfaceType storage is not found.");
+				throw new InternalServerException("WaySurfaceType storage is not found.");
 
 			if (includeExtraInfo(extraInfo, RouteExtraInfoFlag.Surface))
 			{
@@ -152,7 +153,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extTollways = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), TollwaysGraphStorage.class);
 
 			if (_extTollways == null)
-				throw new Exception("Tollways storage is not found.");
+				throw new InternalServerException("Tollways storage is not found.");
 			
 			_tollwaysInfo = new RouteExtraInfo("tollways", _extTollways);
 			_tollwaysInfoBuilder = new SimpleRouteExtraInfoBuilder(_tollwaysInfo);
@@ -172,7 +173,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extGreenIndex = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), GreenIndexGraphStorage.class);
 
 			if (_extGreenIndex == null)
-				throw new Exception("GreenIndex storage is not found.");
+				throw new InternalServerException("GreenIndex storage is not found.");
 			_greenInfo = new RouteExtraInfo("green");
 			_greenInfoBuilder = new SimpleRouteExtraInfoBuilder(_greenInfo);
 		}
@@ -182,7 +183,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extNoiseIndex = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), NoiseIndexGraphStorage.class);
 
 			if (_extNoiseIndex == null)
-				throw new Exception("NoiseIndex storage is not found.");
+				throw new InternalServerException("NoiseIndex storage is not found.");
 			_noiseInfo = new RouteExtraInfo("noise");
 			_noiseInfoBuilder = new SimpleRouteExtraInfoBuilder(_noiseInfo);
 		}
@@ -191,7 +192,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extOsmId = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), OsmIdGraphStorage.class);
 
 			if(_extOsmId == null)
-				throw new Exception("OsmId storage is not found");
+				throw new InternalServerException("OsmId storage is not found");
 			_osmIdInfo = new RouteExtraInfo("osmId");
 			_osmIdInfoBuilder = new SimpleRouteExtraInfoBuilder(_osmIdInfo);
 		}
@@ -200,7 +201,7 @@ public class ExtraInfoProcessor extends PathProcessor {
 			_extRoadAccessRestrictions = GraphStorageUtils.getGraphExtension(graphHopper.getGraphHopperStorage(), RoadAccessRestrictionsGraphStorage.class);
 
 			if(_extRoadAccessRestrictions == null)
-				throw new Exception("RoadAccessRestrictions storage is not found");
+				throw new InternalServerException("RoadAccessRestrictions storage is not found");
 			_roadAccessRestrictionsInfo = new RouteExtraInfo("roadaccessrestrictions", _extRoadAccessRestrictions);
 			_roadAccessRestrictionsBuilder = new SimpleRouteExtraInfoBuilder(_roadAccessRestrictionsInfo);
 		}

@@ -19,6 +19,7 @@ import java.util.Map;
 import com.graphhopper.util.Helper;
 
 import heigit.ors.config.AppConfig;
+import heigit.ors.exceptions.InternalServerException;
 
 public class RoutingServiceSettings {
 	private static Boolean enabled  = true;
@@ -107,11 +108,11 @@ public class RoutingServiceSettings {
 	   return _config.getServiceParameter("routing", paramName);	
 	}
 	
-	public static String getParameter(String paramName, boolean notNull) throws Exception 
+	public static String getParameter(String paramName, boolean notNull) throws InternalServerException
 	{
 	   String value = _config.getServiceParameter("routing", paramName);
 	   if (notNull && Helper.isEmpty(value))
-		   throw new Exception("Parameter '" + paramName + "' must not be null or empty.");
+		   throw new InternalServerException("Parameter '" + paramName + "' must not be null or empty.");
 	   
 	   return value;
 	}

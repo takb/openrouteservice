@@ -16,15 +16,19 @@ package heigit.ors.routing;
 import com.graphhopper.routing.util.PathProcessor;
 
 public class RouteProcessContext {
-	private PathProcessor _pathProcessor;
+	private PathProcessor pathProcessor;
+	private RouteSearchParameters routeSearchParameters;
 
-   public RouteProcessContext(PathProcessor pathProcessor)
-   {
-	   _pathProcessor = pathProcessor;
+   public RouteProcessContext(PathProcessor pathProcessor, RouteSearchParameters routeSearchParams) {
+	   this.pathProcessor = pathProcessor;
+	   this.routeSearchParameters = routeSearchParams;
    }
    
-   public PathProcessor getPathProcessor()
-   {
-	   return _pathProcessor;
+   public PathProcessor getPathProcessor() {
+	   return pathProcessor;
+   }
+
+   public RouteSearchParameters getRouteSearchParams() {
+       return routeSearchParameters;
    }
 }

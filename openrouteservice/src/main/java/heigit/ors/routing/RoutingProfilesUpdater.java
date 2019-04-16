@@ -305,7 +305,7 @@ public class RoutingProfilesUpdater {
 					m_updateStatus = null;
 				}
 
-				loadCntx.releaseElevationProviderCacheAfterAllVehicleProfilesHaveBeenProcessed();
+				loadCntx.releaseElevationProviderCache();
 				
 				FileUtils.writeStringToFile(fileLastUpdate, md5Sum);
 

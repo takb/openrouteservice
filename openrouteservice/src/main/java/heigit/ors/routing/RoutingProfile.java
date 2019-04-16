@@ -18,21 +18,22 @@ import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.routing.util.*;
 import com.graphhopper.routing.weighting.Weighting;
-import com.graphhopper.storage.*;
+import com.graphhopper.storage.CHGraph;
+import com.graphhopper.storage.Graph;
+import com.graphhopper.storage.GraphHopperStorage;
+import com.graphhopper.storage.StorableProperties;
 import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.BBox;
-import com.graphhopper.util.shapes.GHPoint;
 import com.typesafe.config.Config;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
-import heigit.ors.common.TravelRangeType;
 import heigit.ors.exceptions.InternalServerException;
 import heigit.ors.exceptions.StatusCodeException;
-import heigit.ors.isochrones.*;
-import heigit.ors.isochrones.statistics.StatisticsProvider;
-import heigit.ors.isochrones.statistics.StatisticsProviderConfiguration;
-import heigit.ors.isochrones.statistics.StatisticsProviderFactory;
+import heigit.ors.isochrones.IsochroneMap;
+import heigit.ors.isochrones.IsochroneMapBuilderFactory;
+import heigit.ors.isochrones.IsochroneSearchParameters;
+import heigit.ors.isochrones.IsochronesErrorCodes;
 import heigit.ors.mapmatching.MapMatcher;
 import heigit.ors.mapmatching.RouteSegmentInfo;
 import heigit.ors.mapmatching.hmm.HiddenMarkovMapMatcher;
@@ -41,12 +42,8 @@ import heigit.ors.matrix.algorithms.MatrixAlgorithm;
 import heigit.ors.matrix.algorithms.MatrixAlgorithmFactory;
 import heigit.ors.routing.configuration.RouteProfileConfiguration;
 import heigit.ors.routing.graphhopper.extensions.*;
-import heigit.ors.routing.graphhopper.extensions.edgefilters.*;
 import heigit.ors.routing.graphhopper.extensions.storages.GraphStorageUtils;
-import heigit.ors.routing.parameters.*;
 import heigit.ors.routing.traffic.RealTrafficDataProvider;
-import heigit.ors.routing.traffic.TrafficEdgeAnnotator;
-import heigit.ors.services.isochrones.IsochronesServiceSettings;
 import heigit.ors.services.matrix.MatrixServiceSettings;
 import heigit.ors.util.DebugUtility;
 import heigit.ors.util.RuntimeUtility;
@@ -56,11 +53,14 @@ import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Map;
 
 /**
  * This class generates {@link RoutingProfile} classes and is used by mostly all service classes e.g.
@@ -77,43 +77,49 @@ public class RoutingProfile {
     private static int profileIdentifier = 0;
     private static final Object lockObj = new Object();
 
-    private ORSGraphHopper mGraphHopper;
-    private boolean mUseTrafficInfo;
-    private Integer[] mRoutePrefs;
-    private Integer mUseCounter;
-    private boolean mUpdateRun;
-    private MapMatcher mMapMatcher;
+    private ORSGraphHopper graphHopper;
+    private boolean useTrafficInfo;
+    private Integer[] availableRoutingProfiles;
+    private Integer graphhopperInstanceCount;
+    private boolean isUpdateInProgress;
+    private MapMatcher mapMatcher;
 
-    private RouteProfileConfiguration _config;
-    private String _astarApproximation;
-    private Double _astarEpsilon;
+    private RouteProfileConfiguration profileConfig;
 
-    public RoutingProfile(String osmFile, RouteProfileConfiguration rpc, RoutingProfilesCollection profiles, RoutingProfileLoadContext loadCntx) throws Exception {
-        mRoutePrefs = rpc.getProfilesTypes();
-        mUseCounter = 0;
-        mUseTrafficInfo = hasCarPreferences() ? rpc.getUseTrafficInformation() : false;
+    public RoutingProfile(String osmFile, RouteProfileConfiguration rpc, RoutingProfilesCollection profiles, RoutingProfileLoadContext loadCntx) throws InternalServerException {
+        availableRoutingProfiles = rpc.getProfilesTypes();
+        graphhopperInstanceCount = 0;
+        useTrafficInfo = false;
+        if (hasCarPreferences())
+            useTrafficInfo = rpc.getUseTrafficInformation();
 
-        mGraphHopper = initGraphHopper(osmFile, rpc, profiles, loadCntx);
+        graphHopper = initGraphHopper(osmFile, rpc, profiles, loadCntx);
 
-        _config = rpc;
-
-        Config optsExecute = _config.getExecutionOpts();
-        if (optsExecute != null) {
-            if (optsExecute.hasPath("methods.astar.approximation"))
-                _astarApproximation = optsExecute.getString("methods.astar.approximation");
-            if (optsExecute.hasPath("methods.astar.epsilon"))
-                _astarEpsilon = Double.parseDouble(optsExecute.getString("methods.astar.epsilon"));
-        }
+        profileConfig = rpc;
     }
 
-    public static ORSGraphHopper initGraphHopper(String osmFile, RouteProfileConfiguration config, RoutingProfilesCollection profiles, RoutingProfileLoadContext loadCntx) throws Exception {
-        CmdArgs args = createGHSettings(osmFile, config);
+    /**
+     * Initiate GraphHopper instance.
+     *
+     * @param osmFilePath               Path to the file containing the OSM data
+     * @param config                    The configuration options for generating and querying graphs
+     * @param profiles                  The profiles that will have graphs generated
+     * @param loadCntx                  Context for loading external data (i.e. elevation)
+     * @return                          An instance of {@link ORSGraphHopper} with all active graphs loaded
+     * @throws InternalServerException  Thrown when there was an error somewhere in the loading process
+     */
+    public static ORSGraphHopper initGraphHopper(String osmFilePath, RouteProfileConfiguration config, RoutingProfilesCollection profiles, RoutingProfileLoadContext loadCntx) throws InternalServerException {
+        CmdArgs args = createGHSettings(osmFilePath, config);
 
         RoutingProfile refProfile = null;
 
+        // TODO: Investigate if the reference profile code can be removed
         try {
             refProfile = profiles.getRouteProfile(RoutingProfileType.DRIVING_CAR);
         } catch (Exception ex) {
+            // The refProfile was used for adding street names to things like paths and cycleways that are detached
+            // from the road they follow.
+            // Currently refProfile is always null
         }
 
         int profileId = 0;
@@ -170,28 +176,40 @@ public class RoutingProfile {
         }
 
         // Make a stamp which help tracking any changes in the size of OSM file.
-        File file = new File(osmFile);
-        Path pathTimestamp = Paths.get(config.getGraphPath(), "stamp.txt");
-        File file2 = pathTimestamp.toFile();
-        if (!file2.exists())
-            Files.write(pathTimestamp, Long.toString(file.length()).getBytes());
+        File osmFile = new File(osmFilePath);
+        Path timeStampFilePath = Paths.get(config.getGraphPath(), "stamp.txt");
+        File stampFile = timeStampFilePath.toFile();
+        if (!stampFile.exists()) {
+            try {
+                Files.write(timeStampFilePath, Long.toString(osmFile.length()).getBytes());
+            } catch (IOException e) {
+                throw new InternalServerException("Cannot write stamp file");
+            }
+        }
 
         return gh;
     }
 
     public long getCapacity() {
-        GraphHopperStorage graph = mGraphHopper.getGraphHopperStorage();
+        GraphHopperStorage graph = graphHopper.getGraphHopperStorage();
         return graph.getCapacity() + GraphStorageUtils.getCapacity(graph.getExtension());
     }
 
-    private static CmdArgs createGHSettings(String sourceFile, RouteProfileConfiguration config) {
+    /**
+     * Generated the {@link CmdArgs} that are required by GraphHopper for initialising the GH engine
+     *
+     * @param sourceFile    Path to the source data (e.g. osm pbf file) that will be used for generating graphs
+     * @param config        The configuration data used for setting up GraphHopper
+     * @return              A {@link CmdArgs} object containing the properties needed to start GH
+     */
+    protected static CmdArgs createGHSettings(String sourceFile, RouteProfileConfiguration config) {
         CmdArgs args = new CmdArgs();
         args.put("graph.dataaccess", "RAM_STORE");
         args.put("datareader.file", sourceFile);
         args.put("graph.location", config.getGraphPath());
         args.put("graph.bytes_for_flags", config.getEncoderFlagsSize());
 
-        if (config.getInstructions() == false)
+        if (!config.getInstructions())
             args.put("instructions", false);
         if (config.getElevationProvider() != null && config.getElevationCachePath() != null) {
             args.put("graph.elevation.provider", StringUtility.trimQuotes(config.getElevationProvider()));
@@ -200,237 +218,259 @@ public class RoutingProfile {
             args.put("graph.elevation.clear", config.getElevationCacheClear());
         }
 
-        boolean prepareCH = false;
-        boolean prepareLM = false;
-        boolean prepareCore = false;
-        boolean prepareCoreLM = false;
+        args.put(generatePreparationStageProperties(config));
 
-        args.put("prepare.ch.weightings", "no");
-        args.put("prepare.lm.weightings", "no");
-        args.put("prepare.core.weightings", "no");
+        args.put(generateExecutionStageProperties(config));
 
-        if (config.getPreparationOpts() != null) {
-            Config opts = config.getPreparationOpts();
-            if (opts.hasPath("min_network_size"))
-                args.put("prepare.min_network_size", opts.getInt("min_network_size"));
-            if (opts.hasPath("min_one_way_network_size"))
-                args.put("prepare.min_one_way_network_size", opts.getInt("min_one_way_network_size"));
-
-            if (opts.hasPath("methods")) {
-                if (opts.hasPath("methods.ch")) {
-                    prepareCH = true;
-                    Config chOpts = opts.getConfig("methods.ch");
-
-                    if (chOpts.hasPath("enabled") || chOpts.getBoolean("enabled")) {
-                        prepareCH = chOpts.getBoolean("enabled");
-                        if (prepareCH == false)
-                            args.put("prepare.ch.weightings", "no");
-                    }
-
-                    if (prepareCH) {
-                        if (chOpts.hasPath("threads"))
-                            args.put("prepare.ch.threads", chOpts.getInt("threads"));
-                        if (chOpts.hasPath("weightings"))
-                            args.put("prepare.ch.weightings", StringUtility.trimQuotes(chOpts.getString("weightings")));
-                    }
-                }
-
-                if (opts.hasPath("methods.lm")) {
-                    prepareLM = true;
-                    Config lmOpts = opts.getConfig("methods.lm");
-
-                    if (lmOpts.hasPath("enabled") || lmOpts.getBoolean("enabled")) {
-                        prepareLM = lmOpts.getBoolean("enabled");
-                        if (prepareLM == false)
-                            args.put("prepare.lm.weightings", "no");
-                    }
-
-                    if (prepareLM) {
-                        if (lmOpts.hasPath("threads"))
-                            args.put("prepare.lm.threads", lmOpts.getInt("threads"));
-                        if (lmOpts.hasPath("weightings"))
-                            args.put("prepare.lm.weightings", StringUtility.trimQuotes(lmOpts.getString("weightings")));
-                        if (lmOpts.hasPath("landmarks"))
-                            args.put("prepare.lm.landmarks", lmOpts.getInt("landmarks"));
-                    }
-                }
-
-                if (opts.hasPath("methods.core")) {
-                    prepareCore = true;
-                    Config coreOpts = opts.getConfig("methods.core");
-
-                    if (coreOpts.hasPath("enabled") || coreOpts.getBoolean("enabled")) {
-                        prepareCore = coreOpts.getBoolean("enabled");
-                        if (prepareCore == false)
-                            args.put("prepare.ch.weightings", "no");
-                    }
-
-
-                    if (prepareCore) {
-                        if (coreOpts.hasPath("threads"))
-                            args.put("prepare.core.threads", coreOpts.getInt("threads"));
-                        if (coreOpts.hasPath("weightings"))
-                            args.put("prepare.core.weightings", StringUtility.trimQuotes(coreOpts.getString("weightings")));
-                        if (coreOpts.hasPath("lmsets"))
-                            args.put("prepare.corelm.lmsets", StringUtility.trimQuotes(coreOpts.getString("lmsets")));
-                        if (coreOpts.hasPath("landmarks"))
-                            args.put("prepare.corelm.landmarks", coreOpts.getInt("landmarks"));
-                    }
-                }
-            }
-        }
-
-        if (config.getExecutionOpts() != null) {
-            Config opts = config.getExecutionOpts();
-            if (opts.hasPath("methods.ch")) {
-                Config coreOpts = opts.getConfig("methods.ch");
-                if (coreOpts.hasPath("disabling_allowed"))
-                    args.put("routing.ch.disabling_allowed", coreOpts.getBoolean("disabling_allowed"));
-            }
-            if (opts.hasPath("methods.core")) {
-                Config chOpts = opts.getConfig("methods.core");
-                if (chOpts.hasPath("disabling_allowed"))
-                    args.put("routing.core.disabling_allowed", chOpts.getBoolean("disabling_allowed"));
-            }
-            if (opts.hasPath("methods.lm")) {
-                Config lmOpts = opts.getConfig("methods.lm");
-                if (lmOpts.hasPath("disabling_allowed"))
-                    args.put("routing.lm.disabling_allowed", lmOpts.getBoolean("disabling_allowed"));
-
-                if (lmOpts.hasPath("active_landmarks"))
-                    args.put("routing.lm.active_landmarks", lmOpts.getInt("active_landmarks"));
-            }
-            if (opts.hasPath("methods.corelm")) {
-                Config lmOpts = opts.getConfig("methods.corelm");
-                if (lmOpts.hasPath("disabling_allowed"))
-                    args.put("routing.lm.disabling_allowed", lmOpts.getBoolean("disabling_allowed"));
-
-                if (lmOpts.hasPath("active_landmarks"))
-                    args.put("routing.corelm.active_landmarks", lmOpts.getInt("active_landmarks"));
-            }
-        }
-
-        if (config.getOptimize() && !prepareCH)
-            args.put("graph.do_sort", true);
-
-        String flagEncoders = "";
         String[] encoderOpts = !Helper.isEmpty(config.getEncoderOptions()) ? config.getEncoderOptions().split(",") : null;
         Integer[] profiles = config.getProfilesTypes();
 
+        StringBuilder flagEncoders = new StringBuilder();
         for (int i = 0; i < profiles.length; i++) {
             if (encoderOpts == null)
-                flagEncoders += RoutingProfileType.getEncoderName(profiles[i]);
+                flagEncoders.append(RoutingProfileType.getEncoderName(profiles[i]));
             else
-                flagEncoders += RoutingProfileType.getEncoderName(profiles[i]) + "|" + encoderOpts[i];
+                flagEncoders.append(RoutingProfileType.getEncoderName(profiles[i])).append("|").append(encoderOpts[i]);
             if (i < profiles.length - 1)
-                flagEncoders += ",";
+                flagEncoders.append(",");
         }
 
-        args.put("graph.flag_encoders", flagEncoders.toLowerCase());
+        args.put("graph.flag_encoders", flagEncoders.toString().toLowerCase());
 
         args.put("index.high_resolution", 500);
 
         return args;
     }
 
-    public HashMap<Integer, Long> getTmcEdges() {
-        return mGraphHopper.getTmcGraphEdges();
-    }
+    /**
+     * Generate the settings needed by GraphHopper for preparing graphs.
+     *
+     * @param config    Config settings for the whole GH process
+     * @return          An {@link PMap} containing the properties needed by GH for the graph preparation stage
+     */
+    protected static PMap generatePreparationStageProperties(RouteProfileConfiguration config) {
+        Config opts = config.getPreparationOpts();
+        PMap props = new PMap();
 
-    public HashMap<Long, ArrayList<Integer>> getOsmId2edgeIds() {
-        return mGraphHopper.getOsmId2EdgeIds();
-    }
+        props.put("prepare.ch.weightings", "no");
+        props.put("prepare.lm.weightings", "no");
+        props.put("prepare.core.weightings", "no");
 
-    public ORSGraphHopper getGraphhopper() {
-        return mGraphHopper;
-    }
+        if (opts != null) {
+            if (opts.hasPath("min_network_size"))
+                props.put("prepare.min_network_size", opts.getInt("min_network_size"));
+            if (opts.hasPath("min_one_way_network_size"))
+                props.put("prepare.min_one_way_network_size", opts.getInt("min_one_way_network_size"));
 
-    public BBox getBounds() {
-        return mGraphHopper.getGraphHopperStorage().getBounds();
-    }
+            boolean prepareCH = false;
 
-    public StorableProperties getGraphProperties() {
-        StorableProperties props = mGraphHopper.getGraphHopperStorage().getProperties();
+            if (opts.hasPath("methods")) {
+                if (opts.hasPath("methods.ch")) {
+                    prepareCH = true;
+                    props.put(generateCHPreparationProperties(opts));
+                }
+                if (opts.hasPath("methods.lm")) {
+                    props.put(generateLMPreparationOptions(opts));
+                }
+                if (opts.hasPath("methods.core")) {
+                    props.put(generateCorePreparationOptions(opts));
+                }
+            }
+
+            if (config.getOptimize() && !prepareCH)
+                props.put("graph.do_sort", true);
+        }
+
         return props;
     }
 
-    public String getGraphLocation() {
-        return mGraphHopper == null ? null : mGraphHopper.getGraphHopperStorage().getDirectory().toString();
-    }
+    /**
+     * Generate the properties for Contraction Hierarchies based on the values passed in the configuration.
+     *
+     * @param opts  The graph preparation configuration options
+     * @return      An {@link PMap} containing the configuration properties for the CH preparation stage
+     */
+    private static PMap generateCHPreparationProperties(Config opts) {
+        PMap props = new PMap();
+        boolean prepareCH = true;
+        Config chOpts = opts.getConfig("methods.ch");
 
-    public RouteProfileConfiguration getConfiguration() {
-        return _config;
-    }
-
-    public Integer[] getPreferences() {
-        return mRoutePrefs;
-    }
-
-    public boolean hasCarPreferences() {
-        for (int i = 0; i < mRoutePrefs.length; i++) {
-            if (RoutingProfileType.isDriving(mRoutePrefs[i]))
-                return true;
+        if (chOpts.hasPath("enabled")) {
+            prepareCH = chOpts.getBoolean("enabled");
+            if (!prepareCH)
+                props.put("prepare.ch.weightings", "no");
         }
 
-        return false;
+        if (prepareCH) {
+            if (chOpts.hasPath("threads"))
+                props.put("prepare.ch.threads", chOpts.getInt("threads"));
+            if (chOpts.hasPath("weightings"))
+                props.put("prepare.ch.weightings", StringUtility.trimQuotes(chOpts.getString("weightings")));
+        }
+
+        return props;
     }
 
+    /**
+     * Generate the properties for Landmarks (ALT) based on the values passed in the configuration.
+     *
+     * @param opts  The graph preparation configuration options
+     * @return      An {@link PMap} containing the configuration properties for the ALT preparation stage
+     */
+    private static PMap generateLMPreparationOptions(Config opts) {
+        PMap props = new PMap();
+        boolean prepareLM = true;
+        Config lmOpts = opts.getConfig("methods.lm");
 
-    public boolean isCHEnabled() {
-        return mGraphHopper != null && mGraphHopper.isCHEnabled();
+        if (lmOpts.hasPath("enabled")) {
+            prepareLM = lmOpts.getBoolean("enabled");
+            if (!prepareLM)
+                props.put("prepare.lm.weightings", "no");
+        }
+
+        if (prepareLM) {
+            if (lmOpts.hasPath("threads"))
+                props.put("prepare.lm.threads", lmOpts.getInt("threads"));
+            if (lmOpts.hasPath("weightings"))
+                props.put("prepare.lm.weightings", StringUtility.trimQuotes(lmOpts.getString("weightings")));
+            if (lmOpts.hasPath("landmarks"))
+                props.put("prepare.lm.landmarks", lmOpts.getInt("landmarks"));
+        }
+
+        return props;
     }
 
-    public boolean useTrafficInformation() {
-        return mUseTrafficInfo;
+    /**
+     * Generate the properties for the Core (Core-ALT) based on the values passed in the configuration.
+     *
+     * @param opts  The graph preparation configuration options
+     * @return      An {@link PMap} containing the configuration properties for the Core-ALT preparation stage
+     */
+    private static PMap generateCorePreparationOptions(Config opts) {
+        PMap props = new PMap();
+        boolean prepareCore = true;
+        Config coreOpts = opts.getConfig("methods.core");
+
+        if (coreOpts.hasPath("enabled")) {
+            prepareCore = coreOpts.getBoolean("enabled");
+            if (!prepareCore)
+                props.put("prepare.ch.weightings", "no");
+        }
+
+        if (prepareCore) {
+            if (coreOpts.hasPath("threads"))
+                props.put("prepare.core.threads", coreOpts.getInt("threads"));
+            if (coreOpts.hasPath("weightings"))
+                props.put("prepare.core.weightings", StringUtility.trimQuotes(coreOpts.getString("weightings")));
+            if (coreOpts.hasPath("lmsets"))
+                props.put("prepare.corelm.lmsets", StringUtility.trimQuotes(coreOpts.getString("lmsets")));
+            if (coreOpts.hasPath("landmarks"))
+                props.put("prepare.corelm.landmarks", coreOpts.getInt("landmarks"));
+        }
+
+        return props;
     }
 
-    public void close() {
-        mGraphHopper.close();
+    /**
+     * Generate the settings needed by GraphHopper for executing route generation.
+     *
+     * @param config    Config settings for the whole GH process
+     * @return          An {@link PMap} containing the properties needed by GH for the routing stage
+     */
+    private static PMap generateExecutionStageProperties(RouteProfileConfiguration config) {
+        PMap props = new PMap();
+        Config opts = config.getExecutionOpts();
+        if (opts != null) {
+            if (opts.hasPath("methods.ch")) {
+                props.put(disablingOfMethodArgument(opts, "ch"));
+            }
+            if (opts.hasPath("methods.core")) {
+                props.put(disablingOfMethodArgument(opts, "core"));
+            }
+            if (opts.hasPath("methods.lm")) {
+                props.put(disablingOfMethodArgument(opts, "lm"));
+                props.put(activeLandmarksProperty(opts, "lm"));
+            }
+            if (opts.hasPath("methods.corelm")) {
+                props.put(disablingOfMethodArgument(opts, "corelm"));
+                props.put(activeLandmarksProperty(opts, "corelm"));
+            }
+        }
+
+        return props;
     }
 
-    private synchronized boolean isGHUsed() {
-        return mUseCounter > 0;
+    /**
+     * Generate a property for the given method that disables the method based on the values in the configuration.
+     *
+     * @param opts      Execution options for the GH instance
+     * @param method    The string representation of the method to be checked
+     * @return          Properties with the disabling of the method set to the value indicated in the configuration
+     */
+    private static PMap disablingOfMethodArgument(Config opts, String method) {
+        PMap props = new PMap();
+        Config methodOptions = opts.getConfig("methods." + method);
+
+        if(methodOptions.hasPath("disabling_allowed")) {
+            if ("corelm".equals(method))
+                method = "lm";
+            props.put("routing." + method + ".disabling_allowed", methodOptions.getBoolean("disabling_allowed"));
+        }
+
+        return props;
     }
 
-    private synchronized void beginUseGH() {
-        mUseCounter++;
+    /**
+     * Determine the active landmarks that should be used in the routing process.
+     *
+     * @param opts      Execution configuraiton options for GH
+     * @param method    String representation of the method whoe active landmarks should be obtained
+     * @return          Properties containing the GH settings for the active landmarks for the specified method
+     */
+    private static PMap activeLandmarksProperty(Config opts, String method) {
+        PMap props = new PMap();
+        Config methodOptions = opts.getConfig("methods." + method);
+        if (methodOptions.hasPath("active_landmarks"))
+            props.put("routing." + method + ".active_landmarks", methodOptions.getInt("active_landmarks"));
+
+        return props;
     }
 
-    private synchronized void endUseGH() {
-        mUseCounter--;
-    }
-
-    public void updateGH(GraphHopper gh) throws Exception {
-        if (gh == null)
-            throw new Exception("GraphHopper instance is null.");
+    /**
+     * Reinitialise the graphHopper instance
+     *
+     * @param graphHopperInstance       A instance of GraphHopper to use as the base for the new initialisation
+     * @throws InternalServerException  An error occuring during the reinitialising process
+     */
+    public void updateGH(GraphHopper graphHopperInstance) throws InternalServerException {
+        if (graphHopperInstance == null)
+            throw new InternalServerException("GraphHopper instance is null.");
 
         try {
-            mUpdateRun = true;
+            isUpdateInProgress = true;
             while (true) {
                 if (!isGHUsed()) {
-                    GraphHopper ghOld = mGraphHopper;
+                    GraphHopper ghOld = graphHopper;
 
                     ghOld.close();
                     ghOld.clean();
 
-                    gh.close();
-                    // gh.clean(); // do not remove on-disk files, we need to
-                    // copy them as follows
+                    graphHopperInstance.close();
 
                     RuntimeUtility.clearMemory(LOGGER);
 
                     // Change the content of the graph folder
                     String oldLocation = ghOld.getGraphHopperLocation();
                     File dstDir = new File(oldLocation);
-                    File srcDir = new File(gh.getGraphHopperLocation());
+                    File srcDir = new File(graphHopperInstance.getGraphHopperLocation());
                     FileUtils.copyDirectory(srcDir, dstDir, true);
                     FileUtils.deleteDirectory(srcDir);
 
                     RoutingProfileLoadContext loadCntx = new RoutingProfileLoadContext();
 
-                    mGraphHopper = initGraphHopper(ghOld.getDataReaderFile(), _config, RoutingProfileManager.getInstance().getProfiles(), loadCntx);
+                    graphHopper = initGraphHopper(ghOld.getDataReaderFile(), profileConfig, RoutingProfileManager.getInstance().getProfiles(), loadCntx);
 
-                    loadCntx.releaseElevationProviderCacheAfterAllVehicleProfilesHaveBeenProcessed();
+                    loadCntx.releaseElevationProviderCache();
 
                     break;
                 }
@@ -441,30 +481,43 @@ public class RoutingProfile {
             LOGGER.error(ex.getMessage());
         }
 
-        mUpdateRun = false;
+        isUpdateInProgress = false;
     }
 
-    private void waitForUpdateCompletion() throws Exception {
-        if (mUpdateRun) {
+    /**
+     * Method to keep the thread sleeping whilst an update is in progress.
+     *
+     * @throws InternalServerException  Thrown when an update is taking too long or a sleep process fails
+     */
+    private void waitForUpdateCompletion() throws InternalServerException {
+        if (isUpdateInProgress) {
             long startTime = System.currentTimeMillis();
 
-            while (mUpdateRun) {
+            while (isUpdateInProgress) {
                 long curTime = System.currentTimeMillis();
                 if (curTime - startTime > 600000) {
-                    throw new Exception("The route profile is currently being updated.");
+                    throw new InternalServerException("The route profile is currently being updated.");
                 }
 
-                Thread.sleep(1000);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new InternalServerException("The route profile is currently being updated.");
+                }
             }
         }
     }
 
-    private static boolean supportWeightingMethod(int profileType) {
-        return RoutingProfileType.isDriving(profileType) || RoutingProfileType.isCycling(profileType) || RoutingProfileType.isWalking(profileType) || profileType == RoutingProfileType.WHEELCHAIR;
-    }
-
-    public MatrixResult computeMatrix(MatrixRequest req) throws Exception {
-        MatrixResult mtxResult = null;
+    /**
+     * Compute a matrix based on the request parameters passed in.
+     *
+     * @param req                   The parameters to use for generating the matrix
+     * @return                      A {@link MatrixResult} object containing all of the information generated for the matrix
+     * @throws StatusCodeException  Thrown when an error occurs within the matrix calculation process
+     */
+    public MatrixResult computeMatrix(MatrixRequest req) throws StatusCodeException {
+        MatrixResult mtxResult;
 
         GraphHopper gh = getGraphhopper();
         String encoderName = RoutingProfileType.getEncoderName(req.getProfileType());
@@ -473,11 +526,11 @@ public class RoutingProfile {
         MatrixAlgorithm alg = MatrixAlgorithmFactory.createAlgorithm(req, gh, flagEncoder);
 
         if (alg == null)
-            throw new Exception("Unable to create an algorithm to for computing distance/duration matrix.");
+            throw new InternalServerException("Unable to create an algorithm to for computing distance/duration matrix.");
 
         try {
-            String weightingStr = Helper.isEmpty(req.getWeightingMethod()) ? "fastest" : req.getWeightingMethod();
-            Graph graph = null;
+            String weightingStr = Helper.isEmpty(req.getWeightingMethod()) ? WeightingMethod.getName(WeightingMethod.FASTEST) : req.getWeightingMethod();
+            Graph graph;
             if (!req.getFlexibleMode() && gh.getCHFactoryDecorator().isEnabled() && gh.getCHFactoryDecorator().getWeightingsAsStrings().contains(weightingStr))
                 graph = gh.getGraphHopperStorage().getGraph(CHGraph.class);
             else
@@ -493,120 +546,23 @@ public class RoutingProfile {
             alg.init(req, gh, mtxSearchCntx.getGraph(), flagEncoder, weighting);
 
             mtxResult = alg.compute(mtxSearchCntx.getSources(), mtxSearchCntx.getDestinations(), req.getMetrics());
-        } catch (Exception ex) {
-            LOGGER.error(ex);
-            if (ex instanceof StatusCodeException)
-                throw ex;
+        } catch (StatusCodeException e) {
+            LOGGER.error(e);
+            throw e;
+        } catch (Exception e) {
+            LOGGER.error(e);
             throw new InternalServerException(MatrixErrorCodes.UNKNOWN, "Unable to compute a distance/duration matrix.");
         }
 
         return mtxResult;
     }
 
-    private RouteSearchContext createSearchContext(RouteSearchParameters searchParams, RouteSearchMode mode, EdgeFilter customEdgeFilter) throws Exception {
-        PMap props = new PMap();
-
-        int profileType = searchParams.getProfileType();
-        String encoderName = RoutingProfileType.getEncoderName(profileType);
-
-        if ("UNKNOWN".equals(encoderName))
-            throw new InternalServerException(RoutingErrorCodes.UNKNOWN, "unknown vehicle profile.");
-
-        if (!mGraphHopper.getEncodingManager().supports(encoderName)) {
-            throw new IllegalArgumentException("Vehicle " + encoderName + " unsupported. " + "Supported are: "
-                    + mGraphHopper.getEncodingManager());
-        }
-
-        FlagEncoder flagEncoder = mGraphHopper.getEncodingManager().getEncoder(encoderName);
-        GraphStorage gs = mGraphHopper.getGraphHopperStorage();
-        ProfileParameters profileParams = searchParams.getProfileParameters();
-
-        /* Initialize empty edge filter sequence */
-
-        EdgeFilterSequence edgeFilters = new EdgeFilterSequence();
-
-        /* Default edge filter which accepts both directions of the specified vehicle */
-
-        edgeFilters.add(new DefaultEdgeFilter(flagEncoder));
-
-        /* Avoid areas */
-
-        if (searchParams.hasAvoidAreas()) {
-            props.put("avoid_areas", true);
-            edgeFilters.add(new AvoidAreasEdgeFilter(searchParams.getAvoidAreas()));
-        }
-
-        /* Heavy vehicle filter */
-
-        if (RoutingProfileType.isDriving(profileType)) {
-            if (RoutingProfileType.isHeavyVehicle(profileType) && searchParams.hasParameters(VehicleParameters.class)) {
-                VehicleParameters vehicleParams = (VehicleParameters) profileParams;
-
-                if (vehicleParams.hasAttributes()) {
-
-                    if (profileType == RoutingProfileType.DRIVING_HGV)
-                        edgeFilters.add(new HeavyVehicleEdgeFilter(flagEncoder, searchParams.getVehicleType(), vehicleParams, gs));
-                    else if (profileType == RoutingProfileType.DRIVING_EMERGENCY)
-                        edgeFilters.add(new EmergencyVehicleEdgeFilter(vehicleParams, gs));
-                }
-            }
-        }
-
-        /* Wheelchair filter */
-
-        else if (profileType == RoutingProfileType.WHEELCHAIR && searchParams.hasParameters(WheelchairParameters.class)) {
-            edgeFilters.add(new WheelchairEdgeFilter((WheelchairParameters) profileParams, gs));
-        }
-
-        /* Avoid features */
-
-        if (searchParams.hasAvoidFeatures()) {
-            props.put("avoid_features", searchParams.getAvoidFeatureTypes());
-            edgeFilters.add(new AvoidFeaturesEdgeFilter(profileType, searchParams, gs));
-        }
-
-        /* Avoid borders of some form */
-
-        if (searchParams.hasAvoidBorders() || searchParams.hasAvoidCountries()) {
-            if (RoutingProfileType.isDriving(profileType) || RoutingProfileType.isCycling(profileType)) {
-                edgeFilters.add(new AvoidBordersEdgeFilter(searchParams, gs));
-                if(searchParams.hasAvoidCountries())
-                    props.put("avoid_countries", Arrays.toString(searchParams.getAvoidCountries()));
-            }
-        }
-
-
-        if (profileParams != null && profileParams.hasWeightings()) {
-            props.put("custom_weightings", true);
-            Iterator<ProfileWeighting> iterator = profileParams.getWeightings().getIterator();
-            while (iterator.hasNext()) {
-                ProfileWeighting weighting = iterator.next();
-                if (!weighting.getParameters().isEmpty()) {
-                    String name = ProfileWeighting.encodeName(weighting.getName());
-                    for (Map.Entry<String, String> kv : weighting.getParameters().getMap().entrySet())
-                        props.put(name + kv.getKey(), kv.getValue());
-                }
-            }
-        }
-
-        /* Live traffic filter - currently disabled */
-
-        if (searchParams.getConsiderTraffic()) {
-            RealTrafficDataProvider trafficData = RealTrafficDataProvider.getInstance();
-            if (RoutingProfileType.isDriving(profileType) && searchParams.getWeightingMethod() != WeightingMethod.SHORTEST && trafficData.isInitialized()) {
-                props.put("weighting_traffic_block", true);
-                edgeFilters.add(new BlockedEdgesEdgeFilter(flagEncoder, trafficData.getBlockedEdges(gs), trafficData.getHeavyVehicleBlockedEdges(gs)));
-            }
-        }
-
-        RouteSearchContext searchCntx = new RouteSearchContext(mGraphHopper, edgeFilters, flagEncoder);
-        searchCntx.setProperties(props);
-
-        return searchCntx;
-    }
-
+    /**
+     * @deprecated Map matching does not work when graphs are built individually.
+     */
+    @Deprecated
     public RouteSegmentInfo[] getMatchedSegments(Coordinate[] locations, double searchRadius, boolean bothDirections)
-            throws Exception {
+            throws InternalServerException {
         RouteSegmentInfo[] rsi = null;
 
         waitForUpdateCompletion();
@@ -626,157 +582,52 @@ public class RoutingProfile {
         return rsi;
     }
 
+    /**
+     * @deprecated Map matching does not work when graphs are built individually.
+     */
+    @Deprecated
     private RouteSegmentInfo[] getMatchedSegmentsInternal(Coordinate[] locations,
                                                           double searchRadius, EdgeFilter edgeFilter, boolean bothDirections) {
-        if (mMapMatcher == null) {
-            mMapMatcher = new HiddenMarkovMapMatcher();
-            mMapMatcher.setGraphHopper(mGraphHopper);
+        if (mapMatcher == null) {
+            mapMatcher = new HiddenMarkovMapMatcher();
+            mapMatcher.setGraphHopper(graphHopper);
         }
 
-        mMapMatcher.setSearchRadius(searchRadius);
-        mMapMatcher.setEdgeFilter(edgeFilter);
+        mapMatcher.setSearchRadius(searchRadius);
+        mapMatcher.setEdgeFilter(edgeFilter);
 
-        return mMapMatcher.match(locations, bothDirections);
+        return mapMatcher.match(locations, bothDirections);
     }
 
-    public boolean canProcessRequest(double totalDistance, double longestSegmentDistance, int wayPoints) {
-        double maxDistance = (_config.getMaximumDistance() > 0) ? _config.getMaximumDistance() : Double.MAX_VALUE;
-        int maxWayPoints = (_config.getMaximumWayPoints() > 0) ? _config.getMaximumWayPoints() : Integer.MAX_VALUE;
+    /**
+     * Compute a route segment (a route between two waypoints) for this routing profile based on the parameters provided
+     * @param segmentProperties         The properties for this particular route segment
+     * @param routeProcessContext       The {@link RouteProcessContext} object that contains items needed for the route generation as a whole
+     * @return                          An {@link GHResponse} contianing the result of the routing request as obtained from GraphHopper
+     * @throws InternalServerException  Thrown when there is an error in the route generation process
+     */
+    public GHResponse computeRouteSegment(RouteSegmentProperties segmentProperties, RouteProcessContext routeProcessContext)
+            throws InternalServerException {
 
-        return totalDistance <= maxDistance && wayPoints <= maxWayPoints;
-    }
-
-    public GHResponse computeRoute(double lat0, double lon0, double lat1, double lon1, double[] bearings, double[] radiuses, boolean directedSegment, RouteSearchParameters searchParams, EdgeFilter customEdgeFilter, RouteProcessContext routeProcCntx, Boolean geometrySimplify)
-            throws Exception {
-
-        GHResponse resp = null;
+        GHResponse resp;
 
         waitForUpdateCompletion();
 
         beginUseGH();
 
         try {
-            int profileType = searchParams.getProfileType();
-            int weightingMethod = searchParams.getWeightingMethod();
-            RouteSearchContext searchCntx = createSearchContext(searchParams, RouteSearchMode.Routing, customEdgeFilter);
+            GHRequest routingRequest = new GHRequestWrapper(segmentProperties, routeProcessContext, graphHopper, profileConfig).getRequestForGH();
 
-            boolean flexibleMode = searchParams.getFlexibleMode();
-            boolean optimized = searchParams.getOptimized();
-            GHRequest req = null;
-            if (bearings == null)
-                req = new GHRequest(new GHPoint(lat0, lon0), new GHPoint(lat1, lon1));
-            else
-                req = new GHRequest(new GHPoint(lat0, lon0), new GHPoint(lat1, lon1), bearings[0], bearings[1]);
-
-            req.setVehicle(searchCntx.getEncoder().toString());
-            req.setAlgorithm("dijkstrabi");
-
-            if (radiuses != null)
-                req.setMaxSearchDistance(radiuses);
-
-            PMap props = searchCntx.getProperties();
-            if (props != null && props.size() > 0)
-                req.getHints().merge(props);
-
-            if (supportWeightingMethod(profileType)) {
-                if (weightingMethod == WeightingMethod.FASTEST) {
-                    req.setWeighting("fastest");
-                    req.getHints().put("weighting_method", "fastest");
-                } else if (weightingMethod == WeightingMethod.SHORTEST) {
-                    req.setWeighting("shortest");
-                    req.getHints().put("weighting_method", "shortest");
-                    flexibleMode = true;
-                } else if (weightingMethod == WeightingMethod.RECOMMENDED) {
-                    req.setWeighting("fastest");
-                    req.getHints().put("weighting_method", "recommended");
-                    flexibleMode = true;
-                }
-            }
-
-            // MARQ24 for what ever reason after the 'weighting_method' hint have been set (based
-            // on the given searchParameter Max have decided that's necessary 'patch' the hint
-            // for certain profiles...
-            // ...and BTW if the flexibleMode set to true, CH will be disabled!
-            if (weightingMethod == WeightingMethod.RECOMMENDED){
-                if(profileType == RoutingProfileType.DRIVING_HGV && HeavyVehicleAttributes.HGV == searchParams.getVehicleType()){
-                    req.setWeighting("fastest");
-                    req.getHints().put("weighting_method", "recommended_pref");
-                    flexibleMode = true;
-                }
-            }
-
-            if(profileType == RoutingProfileType.WHEELCHAIR) {
-                flexibleMode = true;
-            }
-
-            if (RoutingProfileType.isDriving(profileType) && RealTrafficDataProvider.getInstance().isInitialized())
-                req.setEdgeAnnotator(new TrafficEdgeAnnotator(mGraphHopper.getGraphHopperStorage()));
-
-            req.setEdgeFilter(searchCntx.getEdgeFilter());
-            req.setPathProcessor(routeProcCntx.getPathProcessor());
-
-            if (searchParams.requiresDynamicWeights() || flexibleMode) {
-                if (mGraphHopper.isCHEnabled())
-                    req.getHints().put("ch.disable", true);
-                if (mGraphHopper.getLMFactoryDecorator().isEnabled()) {
-                    req.setAlgorithm("astarbi");
-                    req.getHints().put("lm.disable", false);
-                    req.getHints().put("core.disable", true);
-                    req.getHints().put("ch.disable", true);
-                }
-                if (mGraphHopper.isCoreEnabled() && optimized) {
-                    req.getHints().put("core.disable", false);
-                    req.getHints().put("lm.disable", true);
-                    req.getHints().put("ch.disable", true);
-                    req.setAlgorithm("astarbi");
-                }
+            if (segmentProperties.skippedSegment()) {
+                resp = graphHopper.constructFreeHandRoute(routingRequest);
             } else {
-                if (mGraphHopper.isCHEnabled()) {
-                    req.getHints().put("lm.disable", true);
-                    req.getHints().put("core.disable", true);
-                }
-                else {
-                    if (mGraphHopper.isCoreEnabled() && optimized) {
-                        req.getHints().put("core.disable", false);
-                        req.getHints().put("lm.disable", true);
-                        req.getHints().put("ch.disable", true);
-                        req.setAlgorithm("astarbi");
-                    }
-                    else {
-                        req.getHints().put("ch.disable", true);
-                        req.getHints().put("core.disable", true);
-                    }
-                }
+                graphHopper.setSimplifyResponse(segmentProperties.simplifyGeometry());
+                resp = graphHopper.route(routingRequest);
             }
-            //cannot use CH or CoreALT with avoid areas. Need to fallback to ALT with beeline approximator or Dijkstra
-            if(props.getBool("avoid_areas", false)){
-                req.setAlgorithm("astarbi");
-                req.getHints().put("lm.disable", false);
-                req.getHints().put("core.disable", true);
-                req.getHints().put("ch.disable", true);
-            }
-
-            if (profileType == RoutingProfileType.DRIVING_EMERGENCY) {
-                req.getHints().put("custom_weightings", true);
-                req.getHints().put("weighting_#acceleration#", true);
-                req.getHints().put("lm.disable", true); // REMOVE
-            }
-
-            if (_astarEpsilon != null)
-                req.getHints().put("astarbi.epsilon", _astarEpsilon);
-            if (_astarApproximation != null)
-                req.getHints().put("astarbi.approximation", _astarApproximation);
-
-            if (directedSegment) {
-                resp = mGraphHopper.constructFreeHandRoute(req);
-            } else {
-                mGraphHopper.setSimplifyResponse(geometrySimplify);
-                resp = mGraphHopper.route(req);
-            }
-            if (DebugUtility.isDebug() && !directedSegment) {
+            if (DebugUtility.isDebug() && !segmentProperties.skippedSegment()) {
                 LOGGER.info("visited_nodes.average - " + resp.getHints().get("visited_nodes.average", ""));
             }
-            if (DebugUtility.isDebug() && directedSegment) {
+            if (DebugUtility.isDebug() && segmentProperties.skippedSegment()) {
                 LOGGER.info("skipped segment - " + resp.getHints().get("skipped_segment", ""));
             }
             endUseGH();
@@ -795,19 +646,19 @@ public class RoutingProfile {
      * This function creates the actual {@link IsochroneMap}.
      * So the first step in the function is a checkup on that.
      *
-     * @param parameters The input are {@link IsochroneSearchParameters}
-     * @return The return will be an {@link IsochroneMap}
-     * @throws Exception
+     * @param parameters                The input are {@link IsochroneSearchParameters}
+     * @return                          The return will be an {@link IsochroneMap}
+     * @throws InternalServerException  A problem occured in building the isochrone
      */
-    public IsochroneMap buildIsochrone(IsochroneSearchParameters parameters) throws Exception {
+    public IsochroneMap buildIsochrone(IsochroneSearchParameters parameters) throws InternalServerException {
 
-        IsochroneMap result = null;
+        IsochroneMap result;
         waitForUpdateCompletion();
 
         beginUseGH();
 
         try {
-            RouteSearchContext searchCntx = createSearchContext(parameters.getRouteParameters(), RouteSearchMode.Isochrones, null);
+            RouteSearchContext searchCntx = new RouteSearchContext(graphHopper, parameters.getRouteParameters());
 
             IsochroneMapBuilderFactory isochroneMapBuilderFactory = new IsochroneMapBuilderFactory(searchCntx);
             result = isochroneMapBuilderFactory.buildMap(parameters);
@@ -822,80 +673,14 @@ public class RoutingProfile {
         }
 
         if (result.getIsochronesCount() > 0) {
-
-            if (parameters.hasAttribute("total_pop")) {
-
-                try {
-
-                    Map<StatisticsProviderConfiguration, List<String>> mapProviderToAttrs = new HashMap<StatisticsProviderConfiguration, List<String>>();
-
-                    StatisticsProviderConfiguration provConfig = IsochronesServiceSettings.getStatsProviders().get("total_pop");
-
-                    if (provConfig != null) {
-                        if (mapProviderToAttrs.containsKey(provConfig)) {
-                            List<String> attrList = mapProviderToAttrs.get(provConfig);
-                            attrList.add("total_pop");
-                        } else {
-                            List<String> attrList = new ArrayList<String>();
-                            attrList.add("total_pop");
-                            mapProviderToAttrs.put(provConfig, attrList);
-                        }
-                    }
-
-                    for (Map.Entry<StatisticsProviderConfiguration, List<String>> entry : mapProviderToAttrs.entrySet()) {
-                        provConfig = entry.getKey();
-                        StatisticsProvider provider = StatisticsProviderFactory.getProvider(provConfig.getName(), provConfig.getParameters());
-                        String[] provAttrs = provConfig.getMappedProperties(entry.getValue());
-
-                        for (Isochrone isochrone : result.getIsochrones()) {
-
-                            double[] attrValues = provider.getStatistics(isochrone, provAttrs);
-                            isochrone.setAttributes(entry.getValue(), attrValues, provConfig.getAttribution());
-
-                        }
-                    }
-                } catch (Exception ex) {
-                    LOGGER.error(ex);
-
-                    throw new InternalServerException(IsochronesErrorCodes.UNKNOWN, "Unable to compute isochrone total_pop attribute.");
-                }
-            }
-
-            if (parameters.hasAttribute("reachfactor") || parameters.hasAttribute("area")) {
-
-                for (Isochrone isochrone : result.getIsochrones()) {
-
-                    String units = parameters.getUnits();
-                    String area_units = parameters.getAreaUnits();
-
-                    if (area_units != null) units = area_units;
-
-                    double area = isochrone.calcArea(units);
-
-                    if (parameters.hasAttribute("area")) {
-
-                        isochrone.setArea(area);
-
-                    }
-
-                    if (parameters.hasAttribute("reachfactor") && parameters.getRangeType() == TravelRangeType.Time) {
-
-                        double reachfactor = isochrone.calcReachfactor(units);
-                        isochrone.setReachfactor(reachfactor);
-
-                    }
-
-                }
-
-            }
-
+            result.addAttributes(parameters);
         }
 
         return result;
     }
 
     public Geometry getEdgeGeometry(int edgeId, int mode, int adjnodeid) {
-        EdgeIteratorState iter = mGraphHopper.getGraphHopperStorage().getEdgeIteratorState(edgeId, adjnodeid);
+        EdgeIteratorState iter = graphHopper.getGraphHopperStorage().getEdgeIteratorState(edgeId, adjnodeid);
         PointList points = iter.fetchWayGeometry(mode);
         if (points.size() > 1) {
             Coordinate[] coords = new Coordinate[points.size()];
@@ -909,11 +694,72 @@ public class RoutingProfile {
         return null;
     }
 
-    public EdgeFilter createAccessRestrictionFilter(Coordinate[] wayPoints) {
-        return null;
+    public Map<Integer, Long> getTmcEdges() {
+        return graphHopper.getTmcGraphEdges();
+    }
+
+    public Map<Long, ArrayList<Integer>> getOsmId2edgeIds() {
+        return graphHopper.getOsmId2EdgeIds();
+    }
+
+    public ORSGraphHopper getGraphhopper() {
+        return graphHopper;
+    }
+
+    public BBox getBounds() {
+        return graphHopper.getGraphHopperStorage().getBounds();
+    }
+
+    public StorableProperties getGraphProperties() {
+        return graphHopper.getGraphHopperStorage().getProperties();
+    }
+
+    public String getGraphLocation() {
+        return graphHopper == null ? null : graphHopper.getGraphHopperStorage().getDirectory().toString();
+    }
+
+    public RouteProfileConfiguration getConfiguration() {
+        return profileConfig;
+    }
+
+    public Integer[] getPreferences() {
+        return availableRoutingProfiles;
+    }
+
+    public boolean hasCarPreferences() {
+        for (int profileType : availableRoutingProfiles) {
+            if (RoutingProfileType.isDriving(profileType))
+                return true;
+        }
+
+        return false;
+    }
+
+    public boolean isCHEnabled() {
+        return graphHopper != null && graphHopper.isCHEnabled();
+    }
+
+    public boolean useTrafficInformation() {
+        return useTrafficInfo;
+    }
+
+    public void close() {
+        graphHopper.close();
+    }
+
+    private synchronized boolean isGHUsed() {
+        return graphhopperInstanceCount > 0;
+    }
+
+    private synchronized void beginUseGH() {
+        graphhopperInstanceCount++;
+    }
+
+    private synchronized void endUseGH() {
+        graphhopperInstanceCount--;
     }
 
     public int hashCode() {
-        return mGraphHopper.getGraphHopperStorage().getDirectory().getLocation().hashCode();
+        return graphHopper.getGraphHopperStorage().getDirectory().getLocation().hashCode();
     }
 }
