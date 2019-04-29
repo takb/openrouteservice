@@ -382,7 +382,7 @@ public class HeavyVehicleFlagEncoder extends ORSAbstractFlagEncoder
 
         // multiple restrictions needs special handling compared to foot and bike, see also motorcycle
         if (!firstValue.isEmpty()) {
-            if (restrictedValues.contains(firstValue) && !getConditionalTagInspector().isRestrictedWayConditionallyPermitted(way))
+            if (restrictedValues.contains(firstValue))// && !getConditionalTagInspector().isRestrictedWayConditionallyPermitted(way))
                 return 0;
             if (intendedValues.contains(firstValue))
                 return acceptBit;
@@ -416,9 +416,9 @@ public class HeavyVehicleFlagEncoder extends ORSAbstractFlagEncoder
             }
         }
        
-        if (getConditionalTagInspector().isPermittedWayConditionallyRestricted(way))
-            return 0;
-        else
+//        if (getConditionalTagInspector().isPermittedWayConditionallyRestricted(way))
+//            return 0;
+//        else
             return acceptBit;
     }
 
