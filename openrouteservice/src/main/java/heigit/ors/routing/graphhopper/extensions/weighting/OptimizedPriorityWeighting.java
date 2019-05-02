@@ -49,4 +49,10 @@ public class OptimizedPriorityWeighting extends FastestWeighting {
 
 		return weight / (0.5 + priority);
 	}
+
+	@Override
+	public String getName() {
+		return "recommended";
+	}
+
 }

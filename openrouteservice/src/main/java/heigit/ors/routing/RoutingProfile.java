@@ -741,6 +741,14 @@ public class RoutingProfile {
                 }
             }
 
+            //Use specially prepared recommended weighting graphs for cycling (and walking)
+            if (weightingMethod == WeightingMethod.RECOMMENDED){
+                if(RoutingProfileType.isCycling(profileType) || RoutingProfileType.isWalking(profileType)){
+                    req.setWeighting("recommended");
+                    req.getHints().put("weighting_method", "recommended");
+                }
+            }
+
             // MARQ24 for what ever reason after the 'weighting_method' hint have been set (based
             // on the given searchParameter Max have decided that's necessary 'patch' the hint
             // for certain profiles...
@@ -798,6 +806,15 @@ public class RoutingProfile {
             }
             //cannot use CH or CoreALT with avoid areas. Need to fallback to ALT with beeline approximator or Dijkstra
             if(props.getBool("avoid_areas", false)){
+                req.setAlgorithm("astarbi");
+                req.getHints().put("lm.disable", false);
+                req.getHints().put("core.disable", true);
+                req.getHints().put("ch.disable", true);
+            }
+
+            //If we have special weightings, we have to fall back to ALT with Beeline
+            ProfileParameters profileParams = searchParams.getProfileParameters();
+            if (profileParams != null && profileParams.hasWeightings()) {
                 req.setAlgorithm("astarbi");
                 req.getHints().put("lm.disable", false);
                 req.getHints().put("core.disable", true);
