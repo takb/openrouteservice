@@ -44,8 +44,6 @@ import heigit.ors.routing.graphhopper.extensions.*;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.*;
 import heigit.ors.routing.graphhopper.extensions.storages.GraphStorageUtils;
 import heigit.ors.routing.parameters.*;
-import heigit.ors.routing.traffic.RealTrafficDataProvider;
-import heigit.ors.routing.traffic.TrafficEdgeAnnotator;
 import heigit.ors.services.isochrones.IsochronesServiceSettings;
 import heigit.ors.services.matrix.MatrixServiceSettings;
 import heigit.ors.util.DebugUtility;
@@ -78,7 +76,6 @@ public class RoutingProfile {
     private static final Object lockObj = new Object();
 
     private ORSGraphHopper mGraphHopper;
-    private boolean mUseTrafficInfo;
     private Integer[] mRoutePrefs;
     private Integer mUseCounter;
     private boolean mUpdateRun;
@@ -91,7 +88,6 @@ public class RoutingProfile {
     public RoutingProfile(String osmFile, RouteProfileConfiguration rpc, RoutingProfilesCollection profiles, RoutingProfileLoadContext loadCntx) throws Exception {
         mRoutePrefs = rpc.getProfilesTypes();
         mUseCounter = 0;
-        mUseTrafficInfo = hasCarPreferences() ? rpc.getUseTrafficInformation() : false;
 
         mGraphHopper = initGraphHopper(osmFile, rpc, profiles, loadCntx);
 
@@ -130,7 +126,7 @@ public class RoutingProfile {
 
         GraphProcessContext gpc = new GraphProcessContext(config);
 
-        ORSGraphHopper gh = new ORSGraphHopper(gpc, config.getUseTrafficInformation(), refProfile);
+        ORSGraphHopper gh = new ORSGraphHopper(gpc, refProfile);
 
         ORSDefaultFlagEncoderFactory flagEncoderFactory = new ORSDefaultFlagEncoderFactory();
         gh.setFlagEncoderFactory(flagEncoderFactory);
@@ -146,7 +142,7 @@ public class RoutingProfile {
             loadCntx.setElevationProvider(gh.getElevationProvider());
         }
         gh.setGraphStorageFactory(new ORSGraphStorageFactory(gpc.getStorageBuilders()));
-        gh.setWeightingFactory(new ORSWeightingFactory(RealTrafficDataProvider.getInstance()));
+        gh.setWeightingFactory(new ORSWeightingFactory());
 
         gh.importOrLoad();
 
@@ -333,14 +329,6 @@ public class RoutingProfile {
         return args;
     }
 
-    public HashMap<Integer, Long> getTmcEdges() {
-        return mGraphHopper.getTmcGraphEdges();
-    }
-
-    public HashMap<Long, ArrayList<Integer>> getOsmId2edgeIds() {
-        return mGraphHopper.getOsmId2EdgeIds();
-    }
-
     public ORSGraphHopper getGraphhopper() {
         return mGraphHopper;
     }
@@ -378,10 +366,6 @@ public class RoutingProfile {
 
     public boolean isCHEnabled() {
         return mGraphHopper != null && mGraphHopper.isCHEnabled();
-    }
-
-    public boolean useTrafficInformation() {
-        return mUseTrafficInfo;
     }
 
     public void close() {
@@ -488,7 +472,7 @@ public class RoutingProfile {
 
             HintsMap hintsMap = new HintsMap();
             hintsMap.setWeighting(weightingStr);
-            Weighting weighting = new ORSWeightingFactory(RealTrafficDataProvider.getInstance()).createWeighting(hintsMap, gh.getTraversalMode(), flagEncoder, graph, null, gh.getGraphHopperStorage());
+            Weighting weighting = new ORSWeightingFactory().createWeighting(hintsMap, gh.getTraversalMode(), flagEncoder, graph, null, gh.getGraphHopperStorage());
 
             alg.init(req, gh, mtxSearchCntx.getGraph(), flagEncoder, weighting);
 
@@ -586,16 +570,6 @@ public class RoutingProfile {
                     for (Map.Entry<String, String> kv : weighting.getParameters().getMap().entrySet())
                         props.put(name + kv.getKey(), kv.getValue());
                 }
-            }
-        }
-
-        /* Live traffic filter - currently disabled */
-
-        if (searchParams.getConsiderTraffic()) {
-            RealTrafficDataProvider trafficData = RealTrafficDataProvider.getInstance();
-            if (RoutingProfileType.isDriving(profileType) && searchParams.getWeightingMethod() != WeightingMethod.SHORTEST && trafficData.isInitialized()) {
-                props.put("weighting_traffic_block", true);
-                edgeFilters.add(new BlockedEdgesEdgeFilter(flagEncoder, trafficData.getBlockedEdges(gs), trafficData.getHeavyVehicleBlockedEdges(gs)));
             }
         }
 
@@ -710,9 +684,6 @@ public class RoutingProfile {
             if(profileType == RoutingProfileType.WHEELCHAIR) {
                 flexibleMode = true;
             }
-
-            if (RoutingProfileType.isDriving(profileType) && RealTrafficDataProvider.getInstance().isInitialized())
-                req.setEdgeAnnotator(new TrafficEdgeAnnotator(mGraphHopper.getGraphHopperStorage()));
 
             req.setEdgeFilter(searchCntx.getEdgeFilter());
             req.setPathProcessor(routeProcCntx.getPathProcessor());
