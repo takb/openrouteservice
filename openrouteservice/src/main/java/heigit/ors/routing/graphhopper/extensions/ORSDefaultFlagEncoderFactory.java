@@ -39,9 +39,6 @@ public class ORSDefaultFlagEncoderFactory extends DefaultFlagEncoderFactory impl
             case FlagEncoderNames.CAROFFROAD:
                 return new heigit.ors.routing.graphhopper.extensions.flagencoders.currentlynotinuse.CarOffRoadFlagEncoder(configuration);
 
-            case FlagEncoderNames.CARTMC:
-                return new heigit.ors.routing.graphhopper.extensions.flagencoders.currentlynotinuse.CarTmcFlagEncoder(configuration);
-
             case FlagEncoderNames.EMERGENCY:
                 return new heigit.ors.routing.graphhopper.extensions.flagencoders.EmergencyFlagEncoder(configuration);
 
