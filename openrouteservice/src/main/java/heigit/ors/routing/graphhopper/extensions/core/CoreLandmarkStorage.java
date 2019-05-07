@@ -38,8 +38,7 @@ import com.graphhopper.util.shapes.BBox;
 import com.graphhopper.util.shapes.GHPoint;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.EdgeFilterSequence;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.core.LMEdgeFilterSequence;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.log4j.Logger;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Hendrik Leuschner
  */
 public class CoreLandmarkStorage implements Storable<LandmarkStorage>{
-    private static final Logger LOGGER = LoggerFactory.getLogger(CoreLandmarkStorage.class);
+    private static final Logger LOGGER = Logger.getLogger(CoreLandmarkStorage.class.getName());
     // This value is used to identify nodes where no subnetwork is associated
     private static final int UNSET_SUBNETWORK = -1;
     // This value should only be used if subnetwork is too small to be explicitely stored
@@ -84,6 +83,7 @@ public class CoreLandmarkStorage implements Storable<LandmarkStorage>{
     private boolean logDetails = false;
     private LMEdgeFilterSequence landmarksFilter;
     private int count = 0;
+    private boolean debug;
 
     private HashMap<Integer, Integer> coreNodeIdMap;
     /**
@@ -254,6 +254,30 @@ public class CoreLandmarkStorage implements Storable<LandmarkStorage>{
                     + "s, " + Helper.getMemInfo());
         CHEdgeExplorer tmpExplorer = this.core.createEdgeExplorer(new CoreAndRequireBothDirectionsEdgeFilter(encoder, graph));
 
+        // start of modified code iterating over all nodes
+        debug = true;
+        for (IntArrayList subnetworkIds : graphComponents) {
+            if (subnetworkIds.size() < minimumNodes)
+                continue;
+
+            int index = subnetworkIds.size() - 1;
+            // ensure start node is reachable from both sides and no subnetwork is associated
+            for (; index >= 0; index--) {
+                int nextStartNode = subnetworkIds.get(index);
+                if (subnetworks[coreNodeIdMap.get(nextStartNode)] == UNSET_SUBNETWORK
+                        && GHUtility.count(tmpExplorer.setBaseNode(nextStartNode)) > 0) {
+
+                    if (createLandmarksForSubnetwork(nextStartNode, subnetworks, blockedEdges)) {
+                        landmarkIDs.clear();
+                        landmarkIDs.add(empty);
+                        Arrays.fill(subnetworks, (byte) UNSET_SUBNETWORK);
+                    }
+                }
+            }
+        }
+        debug = false;
+        // end of modified code
+
         int nodes = 0;
         for (IntArrayList subnetworkIds : graphComponents) {
             nodes += subnetworkIds.size();
@@ -392,6 +416,7 @@ public class CoreLandmarkStorage implements Storable<LandmarkStorage>{
         }
 
         // 2) calculate weights for all landmarks -> 'from' and 'to' weight
+        if (!debug)
         for (int lmIdx = 0; lmIdx < tmpLandmarkNodeIds.length; lmIdx++) {
             if (Thread.currentThread().isInterrupted()) {
                 throw new RuntimeException("Thread was interrupted");

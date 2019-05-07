@@ -302,7 +302,7 @@ public class CoreAlgoFactoryDecorator implements RoutingAlgorithmFactoryDecorato
 
         try {
             for (int i = 0; i < getPreparations().size(); i++) {
-                completionService.take().get();
+                    completionService.take().get();
             }
         } catch (Exception e) {
             threadPool.shutdownNow();

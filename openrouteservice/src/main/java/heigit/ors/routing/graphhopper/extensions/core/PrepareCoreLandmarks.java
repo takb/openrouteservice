@@ -27,8 +27,7 @@ import com.graphhopper.util.PMap;
 import com.graphhopper.util.Parameters;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.core.LMEdgeFilterSequence;
 import heigit.ors.routing.graphhopper.extensions.util.ORSParameters;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.log4j.Logger;
 
 import java.util.HashMap;
 import java.util.List;
@@ -44,7 +43,7 @@ import java.util.List;
  * @author Peter Karich
  */
 public class PrepareCoreLandmarks extends AbstractAlgoPreparation {
-    private static final Logger LOGGER = LoggerFactory.getLogger(PrepareCoreLandmarks.class);
+    private static final Logger LOGGER = Logger.getLogger(PrepareCoreLandmarks.class);
     private final Graph graph;
     private final CoreLandmarkStorage lms;
     private final Weighting weighting;

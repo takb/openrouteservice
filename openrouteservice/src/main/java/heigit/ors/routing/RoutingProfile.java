@@ -282,6 +282,8 @@ public class RoutingProfile {
                             args.put("prepare.corelm.lmsets", StringUtility.trimQuotes(coreOpts.getString("lmsets")));
                         if (coreOpts.hasPath("landmarks"))
                             args.put("prepare.corelm.landmarks", coreOpts.getInt("landmarks"));
+                        if (coreOpts.hasPath("log_details"))
+                            args.put("prepare.corelm.log_details", coreOpts.getBoolean("log_details"));
                     }
                 }
             }
