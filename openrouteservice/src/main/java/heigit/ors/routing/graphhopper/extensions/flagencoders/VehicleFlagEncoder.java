@@ -15,17 +15,150 @@
 
 package heigit.ors.routing.graphhopper.extensions.flagencoders;
 
+import com.graphhopper.reader.ReaderRelation;
 import com.graphhopper.reader.ReaderWay;
+import com.graphhopper.routing.profiles.EncodedValue;
+import com.graphhopper.routing.profiles.FactorizedDecimalEncodedValue;
+import com.graphhopper.routing.util.EncodedValueOld;
+import com.graphhopper.util.Helper;
+
+import java.util.List;
 
 public abstract class VehicleFlagEncoder extends ORSAbstractFlagEncoder {
     private final double ACCELERATION_SPEED_CUTOFF_MAX = 80.0;
     private final double ACCELERATION_SPEED_CUTOFF_MIN = 20.0;
     protected SpeedLimitHandler _speedLimitHandler;
 
+    protected EncodedValueOld relationCodeEncoder;
+
     private double accelerationModifier = 0.0;
+
+    protected boolean speedTwoDirections;
+    /**
+     * A map which associates string to speed. Get some impression:
+     * http://www.itoworld.com/map/124#fullscreen
+     * http://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Maxspeed
+     */
+    protected int maxTrackGradeLevel = 3;
+
+    // Take into account acceleration calculations when determining travel speed
+    protected boolean useAcceleration = false;
 
     VehicleFlagEncoder(int speedBits, double speedFactor, int maxTurnCosts) {
         super(speedBits, speedFactor, maxTurnCosts);
+    }
+
+    @Override
+    public void createEncodedValues(List<EncodedValue> registerNewEncodedValue, String prefix, int index) {
+        // first two bits are reserved for route handling in superclass
+        super.createEncodedValues(registerNewEncodedValue, prefix, index);
+        registerNewEncodedValue.add(speedEncoder = new FactorizedDecimalEncodedValue("average_speed", speedBits, speedFactor, true));
+    }
+
+    @Override
+    public int defineRelationBits(int index, int shift) {
+        relationCodeEncoder = new EncodedValueOld("RelationCode", shift, 3, 1, 0, 7);
+        return shift + relationCodeEncoder.getBits();
+    }
+
+    @Override
+    public long handleRelationTags(long oldRelationFlags, ReaderRelation relation) {
+        return oldRelationFlags;
+    }
+
+    /**
+     * make sure that isOneway is called before
+     */
+    protected boolean isBackwardOneway(ReaderWay way) {
+        return way.hasTag("oneway", "-1")
+                || way.hasTag("vehicle:forward", "no")
+                || way.hasTag("motor_vehicle:forward", "no");
+    }
+
+    /**
+     * make sure that isOneway is called before
+     */
+    protected boolean isForwardOneway(ReaderWay way) {
+        return !way.hasTag("oneway", "-1")
+                && !way.hasTag("vehicle:forward", "no")
+                && !way.hasTag("motor_vehicle:forward", "no");
+    }
+
+    protected boolean isOneway(ReaderWay way) {
+        return way.hasTag("oneway", oneways)
+                || way.hasTag("vehicle:backward")
+                || way.hasTag("vehicle:forward")
+                || way.hasTag("motor_vehicle:backward")
+                || way.hasTag("motor_vehicle:forward");
+    }
+
+    public String getWayInfo(ReaderWay way) {
+        String str = "";
+        String highwayValue = way.getTag("highway");
+        // for now only motorway links
+        if ("motorway_link".equals(highwayValue)) {
+            String destination = way.getTag("destination");
+            if (!Helper.isEmpty(destination)) {
+                int counter = 0;
+                for (String d : destination.split(";")) {
+                    if (d.trim().isEmpty())
+                        continue;
+
+                    if (counter > 0)
+                        str += ", ";
+
+                    str += d.trim();
+                    counter++;
+                }
+            }
+        }
+        if (str.isEmpty())
+            return str;
+        // I18N
+        if (str.contains(","))
+            return "destinations: " + str;
+        else
+            return "destination: " + str;
+    }
+
+    protected int getTrackGradeLevel(String grade) {
+        if (grade == null)
+            return 0;
+
+        if (grade.contains(";")) {
+            int maxGrade = 0;
+
+            try {
+                String[] values = grade.split(";");
+                for(String v : values)                 {
+                    int iv = Integer.parseInt(v.replace("grade","").trim());
+                    if (iv > maxGrade)
+                        maxGrade = iv;
+                }
+
+                return maxGrade;
+            }
+            catch(Exception ex)
+            {}
+        }
+
+        switch(grade) {
+            case "grade":
+            case "grade1":
+                return 1;
+            case "grade2":
+                return 2;
+            case "grade3":
+                return 3;
+            case "grade4":
+                return 4;
+            case "grade5":
+                return 5;
+            case "grade6":
+                return 6;
+        }
+
+        return 10;
     }
 
     double addResedentialPenalty(double baseSpeed, ReaderWay way) {
