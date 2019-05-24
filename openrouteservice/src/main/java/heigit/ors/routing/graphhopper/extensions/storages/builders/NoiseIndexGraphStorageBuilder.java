@@ -55,6 +55,7 @@ public class NoiseIndexGraphStorageBuilder extends AbstractGraphStorageBuilder {
 
     private void readNoiseIndicesFromCSV(String csvFile) throws IOException {
         BufferedReader csvBuffer = null;
+        System.out.println(csvFile);
         try {
             String row;
             csvBuffer = new BufferedReader(new FileReader(csvFile));

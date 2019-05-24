@@ -71,7 +71,7 @@ public class ORSGraphStorageFactory implements GraphStorageFactory {
 				}
 				catch(Exception ex)
 				{
-					LOGGER.error(ex);
+					LOGGER.error("Error loading graph extension", ex);
 				}
 			}
 		}
