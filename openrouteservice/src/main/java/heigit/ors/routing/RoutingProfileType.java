@@ -41,6 +41,7 @@ public class RoutingProfileType {
 
     // OTHER STUFF
     public static final int WHEELCHAIR = 30;
+    public static final int EMERGENCY_OVERRIDE = 31;
 
     // GH default FlagEncoders...
     public static final int GH_CAR = 40;
@@ -65,6 +66,7 @@ public class RoutingProfileType {
             || routePref == DRIVING_TRAFFIC
             || routePref == GH_CAR
             || routePref == GH_CAR4WD
+                || routePref == EMERGENCY_OVERRIDE
         )
             return true;
         else
@@ -143,6 +145,9 @@ public class RoutingProfileType {
             case WHEELCHAIR:
                 return "wheelchair";
 
+            case EMERGENCY_OVERRIDE:
+                return "emergency-override";
+
             // GH DEFAULTS:
             case GH_CAR:
                 return "gh-car";
@@ -199,6 +204,9 @@ public class RoutingProfileType {
 
             case "wheelchair":
                 return WHEELCHAIR;
+
+            case "emergency-override":
+                return EMERGENCY_OVERRIDE;
 
             // GH DEFAULTS:
             case "gh-car":
@@ -268,6 +276,9 @@ public class RoutingProfileType {
 
             case RoutingProfileType.WHEELCHAIR:
                 return FlagEncoderNames.WHEELCHAIR;
+
+            case RoutingProfileType.EMERGENCY_OVERRIDE:
+                return FlagEncoderNames.EMERGENCY_OVERRIDE;
 
 
             case RoutingProfileType.GH_CAR:

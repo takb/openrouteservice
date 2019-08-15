@@ -22,6 +22,8 @@ public interface FlagEncoderNames {
     public static final String PEDESTRIAN_ORS   = "pedestrian-ors";
     public static final String HIKING_ORS       = "hiking-ors";
 
+    public static final String EMERGENCY_OVERRIDE = "emergency-override";
+
 
     public static final String GH_CAR           = "car";
     public static final String GH_CAR4WD        = "car4wd";

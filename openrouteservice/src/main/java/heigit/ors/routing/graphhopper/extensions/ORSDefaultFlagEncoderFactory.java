@@ -17,6 +17,7 @@ import com.graphhopper.routing.util.DefaultFlagEncoderFactory;
 import com.graphhopper.routing.util.FlagEncoder;
 import com.graphhopper.routing.util.FlagEncoderFactory;
 import com.graphhopper.util.PMap;
+import heigit.ors.routing.graphhopper.extensions.flagencoders.EmergencyOverrideFlagEncoder;
 import heigit.ors.routing.graphhopper.extensions.flagencoders.FlagEncoderNames;
 
 public class ORSDefaultFlagEncoderFactory extends DefaultFlagEncoderFactory implements FlagEncoderFactory {
@@ -87,6 +88,9 @@ public class ORSDefaultFlagEncoderFactory extends DefaultFlagEncoderFactory impl
 
             case FlagEncoderNames.HIKING_ORS:
                 return new heigit.ors.routing.graphhopper.extensions.flagencoders.HikingFlagEncoder(configuration);
+
+            case FlagEncoderNames.EMERGENCY_OVERRIDE:
+                return new heigit.ors.routing.graphhopper.extensions.flagencoders.EmergencyOverrideFlagEncoder(configuration);
         }
     }
 }
