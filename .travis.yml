@@ -14,6 +14,14 @@ branches:
   - master
   - development
   - integrate-travis
+  - integrate-travis-sonar
+
+addons:
+  sonarcloud:
+    organization: "giscience"
+
+git:
+    depth: false
 
 stages:
   - compile_test
@@ -23,7 +31,7 @@ jobs:
     - stage: compile_test
       script:
         - cp ${TRAVIS_BUILD_DIR}/openrouteservice-api-tests/conf/app.config.test ${TRAVIS_BUILD_DIR}/openrouteservice/src/main/resources/app.config
-        - mvn -f ${TRAVIS_BUILD_DIR}/openrouteservice/pom.xml install -B
+        - mvn -f ${TRAVIS_BUILD_DIR}/openrouteservice/pom.xml org.jacoco:jacoco-maven-plugin:prepare-agent install sonar:sonar -B
         - nohup mvn -f ${TRAVIS_BUILD_DIR}/openrouteservice/pom.xml tomcat7:run &
         - travis_wait 15 sleep 15m
         - tail -n2000 nohup.out
