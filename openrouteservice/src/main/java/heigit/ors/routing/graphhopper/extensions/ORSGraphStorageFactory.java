@@ -102,6 +102,8 @@ public class ORSGraphStorageFactory implements GraphStorageFactory {
 				((ORSGraphHopper) gh).initCoreAlgoFactoryDecorator();
 			if (((ORSGraphHopper) gh).isCoreLMEnabled())
 				((ORSGraphHopper) gh).initCoreLMAlgoFactoryDecorator();
+			if (((ORSGraphHopper) gh).isIsochroneCoreEnabled())
+				((ORSGraphHopper) gh).initIsochroneCoreAlgoFactoryDecorator();
 
 		}
 
@@ -127,6 +129,13 @@ public class ORSGraphStorageFactory implements GraphStorageFactory {
 			weightings.addAll(((ORSGraphHopper) gh).getCoreFactoryDecorator().getWeightings());
 			for (int i = chGraphs; i < weightings.size(); i++) {
 				suffixes.add("core");
+			}
+		}
+
+		if(((ORSGraphHopper) gh).isIsochroneCoreEnabled()) {
+			weightings.addAll(((ORSGraphHopper) gh).getIsochroneCoreFactoryDecorator().getWeightings());
+			for (int i = chGraphs; i < weightings.size(); i++) {
+				suffixes.add("isocore");
 			}
 		}
 

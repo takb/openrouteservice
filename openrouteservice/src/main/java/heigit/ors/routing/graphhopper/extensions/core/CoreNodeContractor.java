@@ -37,7 +37,7 @@ import java.util.Map;
  * @author Hendrik Leuschner
  */
 
-class CoreNodeContractor {
+public class CoreNodeContractor {
     private final GraphHopperStorage ghStorage;
     private final CHGraph prepareGraph;
     private final PreparationWeighting prepareWeighting;
@@ -59,8 +59,8 @@ class CoreNodeContractor {
     private int maxEdgesCount;
     private int maxLevel;
 
-    CoreNodeContractor(Directory dir, GraphHopperStorage ghStorage, CHGraph prepareGraph, Weighting weighting,
-                   TraversalMode traversalMode) {
+    public CoreNodeContractor(Directory dir, GraphHopperStorage ghStorage, CHGraph prepareGraph, Weighting weighting,
+                              TraversalMode traversalMode) {
         if (traversalMode.isEdgeBased()) {
             throw new IllegalArgumentException("Contraction Hierarchies only support node based traversal so far, given: " + traversalMode);
         }
@@ -73,7 +73,7 @@ class CoreNodeContractor {
         originalEdges.create(1000);
     }
 
-    void initFromGraph() {
+    public void initFromGraph() {
         // todo: do we really need this method ? the problem is that ghStorage/prepareGraph can potentially be modified
         // between the constructor call and contractNode,calcShortcutCount etc. ...
         maxLevel = prepareGraph.getNodes() + 1;
@@ -86,27 +86,27 @@ class CoreNodeContractor {
         prepareAlgo = new DijkstraOneToMany(prepareGraph, prepareWeighting, traversalMode);
     }
 
-    void close() {
+    public void close() {
         prepareAlgo.close();
         originalEdges.close();
     }
 
-    void setRestrictionFilter(EdgeFilter filter){
+    public void setRestrictionFilter(EdgeFilter filter){
         this.restrictionFilter = filter;
     }
 
-    void setMaxVisitedNodes(int maxVisitedNodes) {
+    public void setMaxVisitedNodes(int maxVisitedNodes) {
         this.maxVisitedNodes = maxVisitedNodes;
     }
 
-    long contractNode(int node) {
+    public long contractNode(int node) {
         shortcuts.clear();
         long degree = findShortcuts(addScHandler.setNode(node));
         addedShortcutsCount += addShortcuts(shortcuts.keySet());
         return degree;
     }
 
-    CalcShortcutsResult calcShortcutCount(int node) {
+    public CalcShortcutsResult calcShortcutCount(int node) {
         findShortcuts(calcScHandler.setNode(node));
         return calcScHandler.calcShortcutsResult;
     }
@@ -291,7 +291,7 @@ class CoreNodeContractor {
         dijkstraSW = new StopWatch();
     }
 
-    float getDijkstraSeconds() {
+    public float getDijkstraSeconds() {
         return dijkstraSW.getSeconds();
     }
 
@@ -451,8 +451,8 @@ class CoreNodeContractor {
         }
     }
 
-    static class CalcShortcutsResult {
-        int originalEdgesCount;
-        int shortcutsCount;
+    public static class CalcShortcutsResult {
+        public int originalEdgesCount;
+        public int shortcutsCount;
     }
 }

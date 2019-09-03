@@ -35,7 +35,11 @@ import com.graphhopper.util.shapes.GHPoint;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.LineString;
+import heigit.ors.fastisochrones.*;
 import heigit.ors.mapmatching.RouteSegmentInfo;
+import heigit.ors.partitioning.CellStorage;
+import heigit.ors.partitioning.IsochroneNodeStorage;
+import heigit.ors.partitioning.PartitioningFactoryDecorator;
 import heigit.ors.routing.RoutingProfile;
 import heigit.ors.routing.RoutingProfileCategory;
 import heigit.ors.routing.graphhopper.extensions.core.CoreAlgoFactoryDecorator;
@@ -47,8 +51,10 @@ import heigit.ors.routing.graphhopper.extensions.edgefilters.core.AvoidFeaturesC
 import heigit.ors.routing.graphhopper.extensions.edgefilters.core.HeavyVehicleCoreEdgeFilter;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.core.WheelchairCoreEdgeFilter;
 import heigit.ors.routing.graphhopper.extensions.reader.borders.CountryBordersReader;
-import heigit.ors.routing.graphhopper.extensions.util.ORSParameters;
-import heigit.ors.routing.graphhopper.extensions.util.ORSParameters.Core;
+import heigit.ors.routing.graphhopper.extensions.util.ORSParameters.*;
+//import heigit.ors.routing.graphhopper.extensions.util.ORSParameters.Core;
+//import heigit.ors.routing.graphhopper.extensions.util.ORSParameters.IsoCore;
+//import heigit.ors.routing.graphhopper.extensions.util.ORSParameters.Partition;
 import heigit.ors.util.CoordTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +75,7 @@ public class ORSGraphHopper extends GraphHopper {
 	private CountryBordersReader _generalCbReader;
 	private HashMap<Long, ArrayList<Integer>> osmId2EdgeIds; // one osm id can correspond to multiple edges
 	private HashMap<Integer, Long> tmcEdges;
+	private Eccentricity eccentricity;
 
 	private int _minNetworkSize = 200;
 	private int _minOneWayNetworkSize = 0;
@@ -77,8 +84,9 @@ public class ORSGraphHopper extends GraphHopper {
 	private RoutingProfile refRouteProfile;
 
 	private final CoreAlgoFactoryDecorator coreFactoryDecorator =  new CoreAlgoFactoryDecorator();
-
 	private final CoreLMAlgoFactoryDecorator coreLMFactoryDecorator = new CoreLMAlgoFactoryDecorator();
+	private final PartitioningFactoryDecorator partitioningFactoryDecorator = new PartitioningFactoryDecorator();
+	private final IsochroneCoreAlgoFactoryDecorator isochroneCoreAlgoFactoryDecorator = new IsochroneCoreAlgoFactoryDecorator();
 
 
 
@@ -540,6 +548,33 @@ public class ORSGraphHopper extends GraphHopper {
 			coreLMFactoryDecorator.createPreparations(gs, super.getLocationIndex());
 		loadOrPrepareCoreLM();
 
+		if(partitioningFactoryDecorator.isEnabled())
+			partitioningFactoryDecorator.createPreparations(gs);
+		if (!isPartitionPrepared())
+			preparePartition();
+		else{
+			partitioningFactoryDecorator.setExistingStorages();
+			partitioningFactoryDecorator.getCellStorage().loadExisting();
+			partitioningFactoryDecorator.getIsochroneNodeStorage().loadExisting();
+		}
+		//No fast isochrones without partition
+		if(isPartitionPrepared()) {
+		/* Initialize edge filter sequence for fast isochrones*/
+
+			EdgeFilterSequence isochroneCoreEdgeFilter = new EdgeFilterSequence();
+			isochroneCoreEdgeFilter.add(new CellCoreEdgeFilter(partitioningFactoryDecorator.getIsochroneNodeStorage()));
+
+			if (isochroneCoreAlgoFactoryDecorator.isEnabled())
+				isochroneCoreAlgoFactoryDecorator.createPreparations(gs, isochroneCoreEdgeFilter);
+			if (!isIsochroneCorePrepared())
+				prepareIsochroneCore();
+			for(Weighting weighting : isochroneCoreAlgoFactoryDecorator.getWeightings()){
+				for(FlagEncoder encoder : super.getEncodingManager().fetchEdgeEncoders()) {
+					calculateCellProperties(weighting, encoder, traversalMode, partitioningFactoryDecorator.getIsochroneNodeStorage(), partitioningFactoryDecorator.getCellStorage());
+				}
+			}
+		}
+
 	}
 
 
@@ -623,8 +658,45 @@ public class ORSGraphHopper extends GraphHopper {
 			ensureWriteAccess();
 			ghStorage.freeze();
 			if (coreLMFactoryDecorator.loadOrDoWork(ghStorage.getProperties()))
-				ghStorage.getProperties().put(ORSParameters.CoreLandmark.PREPARE + "done", true);
+				ghStorage.getProperties().put(CoreLandmark.PREPARE + "done", true);
 		}
+	}
+
+
+	/**
+	 * Partitioning
+	 */
+
+
+	public GraphHopper setPartitionEnabled(boolean enable) {
+		ensureNotLoaded();
+		partitioningFactoryDecorator.setEnabled(enable);
+		return this;
+	}
+
+	public final boolean isPartitionEnabled() {
+		return partitioningFactoryDecorator.isEnabled();
+	}
+
+	public final PartitioningFactoryDecorator getPartitioningFactoryDecorator() {
+		return partitioningFactoryDecorator;
+	}
+
+	protected void preparePartition() {
+		boolean tmpPrepare = partitioningFactoryDecorator.isEnabled();
+		if (tmpPrepare) {
+			ensureWriteAccess();
+
+			ghStorage.freeze();
+			partitioningFactoryDecorator.prepare(ghStorage.getProperties());
+			ghStorage.getProperties().put(Partition.PREPARE + "done", true);
+		}
+	}
+
+	private boolean isPartitionPrepared() {
+		//TODO
+//		return false;
+		return "true".equals(ghStorage.getProperties().get(Partition.PREPARE + "done"));
 	}
 
 	public CountryBordersReader getGeneralCbReader() {
@@ -636,4 +708,72 @@ public class ORSGraphHopper extends GraphHopper {
 	}
 
 
+
+
+
+
+
+	/**
+	 * Isochrone graph contraction - core based on bordernodes
+	 */
+
+	public GraphHopper setIsochroneCoreEnabled(boolean enable) {
+		ensureNotLoaded();
+		isochroneCoreAlgoFactoryDecorator.setEnabled(enable);
+		return this;
+	}
+
+	public final boolean isIsochroneCoreEnabled() {
+		return isochroneCoreAlgoFactoryDecorator.isEnabled();
+	}
+
+	public void initIsochroneCoreAlgoFactoryDecorator() {
+		if (!isochroneCoreAlgoFactoryDecorator.hasWeightings()) {
+			for (FlagEncoder encoder : super.getEncodingManager().fetchEdgeEncoders()) {
+				for (String coreWeightingStr : isochroneCoreAlgoFactoryDecorator.getWeightingsAsStrings()) {
+					// ghStorage is null at this point
+					Weighting weighting = createWeighting(new HintsMap(coreWeightingStr), traversalMode, encoder, null);
+					isochroneCoreAlgoFactoryDecorator.addWeighting(weighting);
+				}
+			}
+		}
+	}
+	public final IsochroneCoreAlgoFactoryDecorator getIsochroneCoreFactoryDecorator() {
+		return isochroneCoreAlgoFactoryDecorator;
+	}
+
+	protected void prepareIsochroneCore() {
+		boolean tmpPrepare = isochroneCoreAlgoFactoryDecorator.isEnabled();
+		if (tmpPrepare) {
+			ensureWriteAccess();
+
+			ghStorage.freeze();
+			isochroneCoreAlgoFactoryDecorator.prepare(ghStorage.getProperties());
+			ghStorage.getProperties().put(IsoCore.PREPARE + "done", true);
+		}
+	}
+
+	private void calculateCellProperties(Weighting weighting, FlagEncoder flagEncoder, TraversalMode traversalMode, IsochroneNodeStorage isochroneNodeStorage, CellStorage cellStorage){
+		//>> Eccentricities
+//		Eccentricity ecc = getEccentricity();
+		Eccentricity ecc = new Eccentricity(ghStorage);
+		if(!ecc.loadExisting(weighting)) {
+			ecc.calcEccentricities(ghStorage, ghStorage.getBaseGraph(), weighting, flagEncoder, traversalMode, isochroneNodeStorage, cellStorage);
+			Contour contour = new Contour(ghStorage, ghStorage.getNodeAccess(), this.getLocationIndex(), isochroneNodeStorage, cellStorage);
+			contour.calcCellContourPre();
+		}
+		this.eccentricity = ecc;
+	}
+
+	private boolean isIsochroneCorePrepared() {
+		return "true".equals(ghStorage.getProperties().get(IsoCore.PREPARE + "done"))
+				// remove old property in >0.9
+				|| "true".equals(ghStorage.getProperties().get("prepare.done"));
+	}
+
+
+	public Eccentricity getEccentricity(){
+		return this.eccentricity;
+	}
+	
 }

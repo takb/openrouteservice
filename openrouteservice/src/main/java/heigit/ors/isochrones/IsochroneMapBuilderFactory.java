@@ -16,6 +16,7 @@ package heigit.ors.isochrones;
 import heigit.ors.isochrones.IsochroneSearchParameters;
 import heigit.ors.isochrones.builders.IsochroneMapBuilder;
 import heigit.ors.isochrones.builders.concaveballs.ConcaveBallsIsochroneMapBuilder;
+import heigit.ors.isochrones.builders.fast.FastIsochroneMapBuilder;
 import heigit.ors.isochrones.builders.grid.GridBasedIsochroneMapBuilder;
 import heigit.ors.routing.RouteSearchContext;
 
@@ -40,6 +41,9 @@ public class IsochroneMapBuilderFactory {
         {
         	isochroneBuilder= new GridBasedIsochroneMapBuilder();
         }
+        else if ("fastisochrone".equalsIgnoreCase(method)){
+			isochroneBuilder = new FastIsochroneMapBuilder();
+		}
         else
         {
 			throw new Exception("Unknown method.");
