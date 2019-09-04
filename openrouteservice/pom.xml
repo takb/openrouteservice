@@ -275,16 +275,16 @@
         <dependency>
             <groupId>com.github.GIScience.graphhopper</groupId>
             <artifactId>graphhopper-core</artifactId>
-            <version>v0.10.1.15</version>
+            <version>v0.10.1.16</version>
         </dependency>
 
         <dependency>
             <groupId>com.github.GIScience.graphhopper</groupId>
             <artifactId>graphhopper-reader-osm</artifactId>
-            <version>v0.10.1.15</version>
+            <version>v0.10.1.16</version>
         </dependency>
-
         <!-- remove the comment to enable debugging
+
         <dependency>
             <groupId>com.graphhopper</groupId>
             <artifactId>graphhopper-core</artifactId>
@@ -293,10 +293,16 @@
 
         <dependency>
             <groupId>com.graphhopper</groupId>
-            <artifactId>graphhopper-reader-osm</artifactId>
+            <artifactId>graphhopper-api</artifactId>
             <version>0.10-SNAPSHOT</version>
         </dependency>
         -->
+
+        <dependency>
+            <groupId>com.graphhopper</groupId>
+            <artifactId>graphhopper-reader-osm</artifactId>
+            <version>0.10-SNAPSHOT</version>
+        </dependency>
 
         <dependency>
             <groupId>com.typesafe</groupId>
