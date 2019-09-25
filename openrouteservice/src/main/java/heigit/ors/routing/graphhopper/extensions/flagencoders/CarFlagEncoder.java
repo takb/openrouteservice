@@ -57,6 +57,9 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
     // Mean speed for isochrone reach_factor
     private static final int MEAN_SPEED = 100;
 
+    // Modifier for speeds
+    protected double speedModifier = 0;
+
     public CarFlagEncoder() {
         this(5, 5, 0);
     }
@@ -72,6 +75,7 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         this.useAcceleration = properties.getBool("use_acceleration", false);
 
         maxTrackGradeLevel = properties.getInt("maximum_grade_level", 3);
+        this.speedModifier = properties.getDouble("Speed_modifier", 0);
     }
 
     public CarFlagEncoder(String propertiesStr) {
@@ -421,6 +425,11 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
             		{}
             	}
             }
+
+            if (this.speedModifier != 0) {
+                speed = speed*speedModifier;
+            }
+
 
             flags = setSpeed(flags, speed);
 
