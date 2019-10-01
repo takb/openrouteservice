@@ -303,7 +303,7 @@ public class RoutingProfile {
                     if (coreOpts.hasPath("enabled") || coreOpts.getBoolean("enabled")) {
                         prepareCore = coreOpts.getBoolean("enabled");
                         if (prepareCore == false)
-                            args.put("prepare.ch.weightings", "no");
+                            args.put("prepare.core.weightings", "no");
                     }
 
 
