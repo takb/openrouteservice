@@ -45,6 +45,7 @@ import heigit.ors.routing.RoutingProfileCategory;
 import heigit.ors.routing.graphhopper.extensions.core.CoreAlgoFactoryDecorator;
 import heigit.ors.routing.graphhopper.extensions.core.CoreLMAlgoFactoryDecorator;
 import heigit.ors.routing.graphhopper.extensions.core.PrepareCore;
+import heigit.ors.routing.graphhopper.extensions.edgefilters.AvoidFeaturesEdgeFilter;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.EdgeFilterSequence;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.core.AvoidBordersCoreEdgeFilter;
 import heigit.ors.routing.graphhopper.extensions.edgefilters.core.AvoidFeaturesCoreEdgeFilter;
@@ -548,8 +549,14 @@ public class ORSGraphHopper extends GraphHopper {
 			coreLMFactoryDecorator.createPreparations(gs, super.getLocationIndex());
 		loadOrPrepareCoreLM();
 
-		if(partitioningFactoryDecorator.isEnabled())
-			partitioningFactoryDecorator.createPreparations(gs);
+
+		if(partitioningFactoryDecorator.isEnabled()) {
+			for(FlagEncoder encoder : super.getEncodingManager().fetchEdgeEncoders()) {
+				EdgeFilterSequence partitioningEdgeFilter = new EdgeFilterSequence();
+				partitioningEdgeFilter.add(new DefaultEdgeFilter(encoder, false, true));
+				partitioningFactoryDecorator.createPreparations(gs, partitioningEdgeFilter);
+			}
+		}
 		if (!isPartitionPrepared())
 			preparePartition();
 		else{
@@ -698,6 +705,19 @@ public class ORSGraphHopper extends GraphHopper {
 //		return false;
 		return "true".equals(ghStorage.getProperties().get(Partition.PREPARE + "done"));
 	}
+
+	public void initPartitioningFactoryDecorator() {
+		if (!partitioningFactoryDecorator.hasWeightings()) {
+			for (FlagEncoder encoder : super.getEncodingManager().fetchEdgeEncoders()) {
+				for (String partWeightingStr : partitioningFactoryDecorator.getWeightingsAsStrings()) {
+					// ghStorage is null at this point
+					Weighting weighting = createWeighting(new HintsMap(partWeightingStr), traversalMode, encoder, null);
+					partitioningFactoryDecorator.addWeighting(weighting);
+				}
+			}
+		}
+	}
+
 
 	public CountryBordersReader getGeneralCbReader() {
 		return _generalCbReader;
