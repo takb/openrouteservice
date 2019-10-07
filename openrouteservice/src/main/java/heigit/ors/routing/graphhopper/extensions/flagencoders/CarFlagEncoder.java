@@ -75,7 +75,7 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         this.useAcceleration = properties.getBool("use_acceleration", false);
 
         maxTrackGradeLevel = properties.getInt("maximum_grade_level", 3);
-        this.speedModifier = properties.getDouble("Speed_modifier", 0);
+        this.speedModifier = properties.getDouble("speed_modifier", 0);
     }
 
     public CarFlagEncoder(String propertiesStr) {
