@@ -11,6 +11,7 @@ import com.graphhopper.storage.*;
 import com.graphhopper.util.CmdArgs;
 import com.graphhopper.util.Helper;
 import heigit.ors.routing.graphhopper.extensions.util.ORSParameters.IsoCore;
+import heigit.ors.services.isochrones.IsochronesServiceSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +49,7 @@ public class IsochroneCoreAlgoFactoryDecorator implements RoutingAlgorithmFactor
 
     public IsochroneCoreAlgoFactoryDecorator() {
         setPreparationThreads(1);
-        setWeightingsAsStrings(Arrays.asList(getDefaultWeighting()));
+        setWeightingsAsStrings(Arrays.asList(IsochronesServiceSettings.getWeightings().split(",")));
     }
 
     @Override

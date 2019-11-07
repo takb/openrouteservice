@@ -37,12 +37,16 @@ public class IsochronesServiceSettings {
 	private static boolean allowComputeArea = true;
 	private static Map<String, StatisticsProviderConfiguration> statsProviders;
 	private static String attribution = "";
+	private static String weightings = "";
 
 	static 
 	{
 		String value = AppConfig.Global().getServiceParameter("isochrones", "enabled");
 		if (value != null)
 			enabled = Boolean.parseBoolean(value);
+		value = AppConfig.Global().getServiceParameter("isochrones", "weightings");
+		if (value != null)
+			weightings = value;
 		value = AppConfig.Global().getServiceParameter("isochrones", "maximum_locations");
 		if (value != null)
 			maximumLocations = Integer.parseInt(value);
@@ -146,6 +150,12 @@ public class IsochronesServiceSettings {
 
 	public static boolean getEnabled() {
 		return enabled;
+	}
+
+	public static String getWeightings() {
+		if (weightings == "")
+			return "fastest";
+		return weightings;
 	}
 
 	public static boolean getAllowComputeArea() {
