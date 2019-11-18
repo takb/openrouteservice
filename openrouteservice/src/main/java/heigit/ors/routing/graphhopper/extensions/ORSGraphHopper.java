@@ -776,10 +776,12 @@ public class ORSGraphHopper extends GraphHopper {
 	private void calculateCellProperties(Weighting weighting, FlagEncoder flagEncoder, TraversalMode traversalMode, IsochroneNodeStorage isochroneNodeStorage, CellStorage cellStorage){
 		//>> Eccentricities
 //		Eccentricity ecc = getEccentricity();
-		Eccentricity ecc = new Eccentricity(ghStorage);
+		Eccentricity ecc = this.eccentricity;
+		if (ecc == null)
+			ecc = new Eccentricity(ghStorage);
 		if(!ecc.loadExisting(weighting)) {
 			ecc.calcEccentricities(ghStorage, ghStorage.getBaseGraph(), weighting, flagEncoder, traversalMode, isochroneNodeStorage, cellStorage);
-			Contour contour = new Contour(ghStorage, ghStorage.getNodeAccess(), this.getLocationIndex(), isochroneNodeStorage, cellStorage);
+			Contour contour = new Contour(ghStorage, ghStorage.getNodeAccess(), isochroneNodeStorage, cellStorage);
 			contour.calcCellContourPre();
 		}
 		this.eccentricity = ecc;
