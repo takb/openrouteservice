@@ -89,6 +89,7 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         restrictedValues.add("delivery");
         restrictedValues.add("military");
         restrictedValues.add("emergency");
+        restrictedValues.add("ferry");
 
         intendedValues.add("yes");
         intendedValues.add("permissive");
@@ -257,14 +258,17 @@ public class CarFlagEncoder extends VehicleFlagEncoder {
         // TODO: Ferries have conditionals, like opening hours or are closed during some time in the year
         String highwayValue = way.getTag("highway");
         String firstValue = way.getFirstPriorityTag(restrictions);
+        if(way.hasTag("ferry"))
+            return 0;
         if (highwayValue == null) {
             if (way.hasTag("route", ferries)) {
-                if (restrictedValues.contains(firstValue))
-                    return 0;
-                if (intendedValues.contains(firstValue) ||
-                        // implied default is allowed only if foot and bicycle is not specified:
-                        firstValue.isEmpty() && !way.hasTag("foot") && !way.hasTag("bicycle"))
-                    return acceptBit | ferryBit;
+                return 0;
+//                if (restrictedValues.contains(firstValue))
+//                    return 0;
+//                if (intendedValues.contains(firstValue) ||
+//                        // implied default is allowed only if foot and bicycle is not specified:
+//                        firstValue.isEmpty() && !way.hasTag("foot") && !way.hasTag("bicycle"))
+//                    return acceptBit | ferryBit;
             }
             return 0;
         }
