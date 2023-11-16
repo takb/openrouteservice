@@ -62,7 +62,7 @@ jobs:
 
       - name: Print is VERSION contains SNAPSHOT
         shell: bash
-        if: contains(env.ORS_VERSION, 'SNAPSHOT')
+        if: contains(env.ORS_VERSION, '1')
         run: |
           ##### Print debugging info #####
           echo "${{ env.ORS_VERSION }} contains"
