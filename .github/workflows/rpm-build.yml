@@ -48,7 +48,24 @@ jobs:
         run: |
           # Get the project version from the pom.xml file and replace the dashes with dots
           projectVersion=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-/./g')
+          echo "ORS_VERSION=$projectVersion"
           echo "ORS_VERSION=$projectVersion" >> "$GITHUB_ENV"
+
+
+
+      - name: Print is VERSION contains SNAPSHOT
+        shell: bash
+        if: ${{ contains(env.ORS_VERSION, 'SNAPSHOT') }}
+        run: |
+          ##### Print debugging info #####
+          echo "${{ env.ORS_VERSION }} contains"
+
+      - name: Print is VERSION contains SNAPSHOT
+        shell: bash
+        if: contains(env.ORS_VERSION, 'SNAPSHOT')
+        run: |
+          ##### Print debugging info #####
+          echo "${{ env.ORS_VERSION }} contains"
 
       - name: Attach RPM package to release
         if: github.event_name == 'release' && github.event.action == 'created'
@@ -58,13 +75,6 @@ jobs:
           asset_path: ${{ env.RPM_ORS_PATH }}
           asset_name: ${{ env.RPM_ORS_NAME }}
           asset_content_type: application/x-rpm
-
-      - name: Print is VERSION contains SNAPSHOT
-        shell: bash
-        if: contains(env.ORS_VERSION, 'SNAPSHOT')
-        run: |
-          ##### Print debugging info #####
-          echo "${{ env.ORS_VERSION }} contains"
 
       - name: Upload the RPM package to the nexus releases rpm registry
         if: github.event_name == 'release' && github.event.action == 'created'
