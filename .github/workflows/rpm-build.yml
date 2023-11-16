@@ -44,6 +44,12 @@ jobs:
           echo "github.event_name = ${{ github.event_name }}"
           echo "github.event.action = ${{ github.event.action }}"
 
+      - name: Get mvn project.version
+        run: |
+          # Get the project version from the pom.xml file and replace the dashes with dots
+          projectVersion=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-/./g')
+          echo "ORS_VERSION=$projectVersion" >> "$GITHUB_ENV"
+
       - name: Attach RPM package to release
         if: github.event_name == 'release' && github.event.action == 'created'
         uses: actions/upload-release-asset@v1
@@ -52,7 +58,6 @@ jobs:
           asset_path: ${{ env.RPM_ORS_PATH }}
           asset_name: ${{ env.RPM_ORS_NAME }}
           asset_content_type: application/x-rpm
-
 
       - name: Print is VERSION contains SNAPSHOT
         shell: bash
