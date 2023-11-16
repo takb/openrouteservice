@@ -60,15 +60,13 @@ jobs:
         run: |
           ##### Print debugging info #####
           echo "${{ env.ORS_VERSION }}"
-          echo "${{ contains(env.ORS_VERSION, 'SNAPSHOT') }}"
 
       - name: Print is VERSION NOT contains SNAPSHOT
         shell: bash
-        if: !contains(env.ORS_VERSION, 'SNAPSHOT')
+        if: ! contains(env.ORS_VERSION, 'SNAPSHOT')
         run: |
           ##### Print debugging info #####
           echo "${{ env.ORS_VERSION }}"
-          echo "${{ contains(env.ORS_VERSION, 'SNAPSHOT') }}"
 
       - name: Upload the RPM package to the nexus releases rpm registry
         if: github.event_name == 'release' && github.event.action == 'created'
