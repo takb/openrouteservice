@@ -46,34 +46,26 @@ jobs:
 
       - name: Get mvn project.version
         run: |
-          # Get the project version from the pom.xml file and replace the dashes with dots
-          projectVersion=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed 's/-/./g')
-          echo "ORS_VERSION=$projectVersion"
-          echo "ORS_VERSION=$projectVersion" >> "$GITHUB_ENV"
+          echo "ORS_VERSION=1" >> "$GITHUB_ENV"
 
-
-
-      - name: Print is VERSION contains SNAPSHOT
-        shell: bash
-        if: ${{ contains(env.ORS_VERSION, 'SNAPSHOT') }}
-        run: |
-          ##### Print debugging info #####
-          echo "${{ env.ORS_VERSION }} contains"
 
       - name: Print is VERSION contains SNAPSHOT
         shell: bash
         if: contains(env.ORS_VERSION, '1')
         run: |
           ##### Print debugging info #####
-          echo "${{ env.ORS_VERSION }} contains"
+          echo "ORS_VERSION: ${{ env.ORS_VERSION }} "
+          touch test.file
 
       - name: Attach RPM package to release
         if: github.event_name == 'release' && github.event.action == 'created'
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ env.RPM_ORS_PATH }}
-          asset_name: ${{ env.RPM_ORS_NAME }}
+          asset_path: test.file
+          asset_name: test.file
           asset_content_type: application/x-rpm
 
       - name: Upload the RPM package to the nexus releases rpm registry
